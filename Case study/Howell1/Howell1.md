@@ -526,6 +526,7 @@ for(i in 1:N){
 ```
 
 ![](Howell1_files/figure-gfm/unnamed-chunk-39-1.png)<!-- --> 
+
 The prior produces a small median value of weight. So, we need to adjust it to
 ensure the prior prediction to be reasonable
 
