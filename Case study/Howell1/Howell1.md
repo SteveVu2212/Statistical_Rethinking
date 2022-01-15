@@ -28,7 +28,7 @@ rstan_options(auto_write = TRUE)
 # Loading data
 
 The data are partial census data for the Dobe area !Kung San which is
-the most famous foraging population of the twentieth century.
+the most famous foraging population of the twentieth century
 
 ``` r
 data("Howell1")
@@ -58,7 +58,7 @@ d2 <- d[d$age >= 18, ]
 ## Prior predictive checks
 
 The prior of alpha states that if an individual has an average height,
-the average height centers around 178 cm.
+the average height centers around 178 cm
 
 ``` r
 curve(dnorm(x,178,20), from=100, to=250)
@@ -77,7 +77,7 @@ curve(dunif(x,0,50), from=-10, to=60)
 
 Look at the prior of beta, its initial prior results in unreasonable
 predictions of heights as some is smaller than 0 cm and some is higher
-than 272 cm.
+than 272 cm
 
 ``` r
 set.seed(2971)
@@ -102,7 +102,7 @@ for(i in 1:N){
 
 Assume that average height increases with average weight, we should
 restrict the value of beta to be positive. So, Log-Normal is an
-alternative.
+alternative
 
 ``` r
 set.seed(2971)
@@ -125,7 +125,7 @@ for(i in 1:N){
 
 ![](Howell1_files/figure-gfm/unnamed-chunk-10-1.png)<!-- -->
 
-## Adjusted statistical model
+## Adjusted statistical models
 
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/adjusted%20model%201.png)
 
@@ -259,7 +259,7 @@ shade(height.pi, weight.seq)
 ![](Howell1_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
 
 # 2.Polynomial models
-
+## Initial statistical models
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/model%202.png)
 
 ### Prior predictive check
@@ -286,9 +286,10 @@ for (i in 1:50){
 }
 ```
 
-![](Howell1_files/figure-gfm/unnamed-chunk-23-1.png)<!-- --> These prior
-predictive check shows that the average height is in a solid and
-reasonable range.
+![](Howell1_files/figure-gfm/unnamed-chunk-23-1.png)<!-- --> 
+
+These prior predictive check shows that the average height is in a solid and
+reasonable range
 
 ``` r
 dlist2 <- list(
@@ -380,7 +381,7 @@ shade(height.pi,weight.seq,col=col.alpha("grey",0.5))
 
 # 3.Categorical variables
 
-We are going to model separately heights of male and female.
+We are going to model separately heights of male and female
 
 ``` r
 d$sex <- d$male+1
@@ -462,12 +463,12 @@ compare(m1.1, m2.1, m3.1)
 Assume that a person is shaped like a cylinder. The weight of the
 cylinder is a consequence of the volume of the cylinder. The volume of
 the cylinder is a consequence of growth in the height and width of the
-cylinder.
+cylinder
 
 The volume of the cylinder is
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/volume%20cylinder.png)
 While we do not know a person’s radius, we can assume that it is
-constant proportion of height.
+constant proportion of height
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/radius%20cylinder.png)
 As weight is some proportion of volume. We have a formula below
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/weight%20formula.png)
@@ -479,7 +480,7 @@ d <- Howell1
 
 We get rid of measurement scale by dividing the observed variables by
 reference values. The two new variables have means of 1, which free
-parameters’ prior from measurement scale.
+parameters’ prior from measurement scale
 
 ``` r
 d$w <- d$weight/mean(d$weight)
@@ -491,7 +492,7 @@ d$h <- d$height/mean(d$height)
 p is the ratio of the radius to the height. So, it must be greater than
 zero and less than one. It is also certainly less than one-half. Thus,
 we need a prior distribution for p that is bounded between zero and one
-with most of the prior mass below 0.5.
+with most of the prior mass below 0.5
 
 Beta distribution is an option for parameters whose values lie in range
 of zero and one. Based on Beta distribution’s mean calculation, the
@@ -503,7 +504,7 @@ must be greater than 1. As w and h have means of 1, let set its prior
 mean around 2
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/k%20distribution.png)
 
-## Initial statistical model
+## Initial statistical models
 
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/initial%20model%205.png)
 
@@ -524,13 +525,13 @@ for(i in 1:N){
 }
 ```
 
-![](Howell1_files/figure-gfm/unnamed-chunk-39-1.png)<!-- --> The prior
-produces a small median value of weight. So, we need to adjust it to
-ensure the prior prediction to be reasonable.
+![](Howell1_files/figure-gfm/unnamed-chunk-39-1.png)<!-- --> 
+The prior produces a small median value of weight. So, we need to adjust it to
+ensure the prior prediction to be reasonable
 
 One of the least informative parameter is k. Thus, we will change its
 prior. As we need to increase the median value of weight, the mean of k
-will be upped.
+will be upped
 
 ``` r
 N <- 100
@@ -549,7 +550,7 @@ for(i in 1:N){
 
 ![](Howell1_files/figure-gfm/unnamed-chunk-41-1.png)<!-- -->
 
-## Adjusted statistical model
+## Adjusted statistical models
 
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/adjusted%20model%205.png)
 
@@ -644,7 +645,7 @@ shade(w.pi,h.seq)
 ## One more thing
 
 We will relax the exponent of height in the cylinder model and let it be
-a free parameter. We need to add a new prior.
+a free parameter. We need to add a new prior
 
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Howell1/Pictures/model%205.2.png)
 
@@ -749,4 +750,4 @@ compare(m5.1, m5.2, func=PSIS)
     ## m5.2 53950.33 2231.6460 35271.15 1432.842 4837.3674      0
 
 The first model outperforms the second in terms of expected predictive
-accuracy.
+accuracy
