@@ -3,6 +3,8 @@ Howell1
 
 # Instalation
 
+![](https://github.com/SteveVu2212/Healthcare-Investment-Behavior/blob/main/images/Health%20After%20Harvest.png)
+
 ``` r
 rm(list=ls())
 ```

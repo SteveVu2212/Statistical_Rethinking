@@ -593,8 +593,6 @@ shade(w.pi,h.seq)
 
 We will relax the exponent of height in the cylinder model and let it be a free parameter. We need to add a new prior.
 
-![](https://github.com/SteveVu2212/Healthcare-Investment-Behavior/blob/main/images/Health%20After%20Harvest.png)
-
 $$
 W_{i} \sim LogNormal(\mu_{i},\sigma)\\
 exp(\mu_{i})=k \pi p^{2} h_{i}^{e}\\
