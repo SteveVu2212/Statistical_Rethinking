@@ -32,7 +32,7 @@ rstan_options(auto_write = TRUE)
 
 # Loading data
 
-The data are partial census data for the Dobe area !Kung San which is the most famous foraging population of the twentieth century.
+The data are partial census data for the Dobe area !Kung San which is the most famous foraging population of the twentieth century
 
 ```{r}
 data("Howell1")
@@ -60,7 +60,7 @@ $$
 
 ## Prior predictive checks
 
-The prior of alpha states that if an individual has an average height, the average height centers around 178 cm.
+The prior of alpha states that if an individual has an average height, the average height centers around 178 cm
 
 ```{r}
 curve(dnorm(x,178,20), from=100, to=250)
@@ -72,7 +72,7 @@ The prior of sigma is a truly flat prior that constrain the variation to have po
 curve(dunif(x,0,50), from=-10, to=60)
 ```
 
-Look at the prior of beta, its initial prior results in unreasonable predictions of heights as some is smaller than 0 cm and some is higher than 272 cm.
+Look at the prior of beta, its initial prior results in unreasonable predictions of heights as some is smaller than 0 cm and some is higher than 272 cm
 
 ```{r}
 set.seed(2971)
@@ -93,7 +93,7 @@ for(i in 1:N){
 }
 ```
 
-Assume that average height increases with average weight, we should restrict the value of beta to be positive. So, Log-Normal is an alternative.
+Assume that average height increases with average weight, we should restrict the value of beta to be positive. So, Log-Normal is an alternative
 
 ```{r}
 set.seed(2971)
@@ -114,7 +114,7 @@ for(i in 1:N){
 }
 ```
 
-## Adjusted statistical model
+## Adjusted statistical models
 
 $$
 h_{i} \sim Normal(\mu_{i},\sigma)\\
@@ -233,7 +233,7 @@ shade(height.pi, weight.seq)
 ```
 
 # 2.Polynomial models
-
+## Initial statistical models
 $$
 h_{i} \sim Normal(\mu_{i},\sigma)\\
 \mu_{i} = \alpha + \beta_{1}x_{i} + \beta_{2}x^{2}_{i}\\
@@ -266,7 +266,8 @@ for (i in 1:50){
   curve(a[i] + b1[i]*x + b2[i]*x^2, from=min(d$weight_s), to=max(d$weight_s), add=TRUE)
 }
 ```
-These prior predictive check shows that the average height is in a solid and reasonable range.
+
+These prior predictive check shows that the average height is in a solid and reasonable range
 
 ```{r}
 dlist2 <- list(
@@ -348,7 +349,9 @@ shade(height.pi,weight.seq,col=col.alpha("grey",0.5))
 ```
 
 # 3.Categorical variables
-We are going to model separately heights of male and female.
+
+We are going to model separately heights of male and female
+
 ```{r}
 d$sex <- d$male+1
 ```
@@ -398,7 +401,9 @@ generated quantities{
 m3.1 <- stan(model_code = code_m3.1, data=dlist3, chains=4, cores=4)
 precis(m3.1)
 ```
+
 To get the difference between categories, we will compute the *contrast*
+
 ```{r}
 post <- extract.samples(m3.1)
 post$diff <- post$a[,1] - post$a[,2]
@@ -414,17 +419,20 @@ compare(m1.1, m2.1, m3.1)
 
 # 5.Scientific model
 
-Assume that a person is shaped like a cylinder. The weight of the cylinder is a consequence of the volume of the cylinder. The volume of the cylinder is a consequence of growth in the height and width of the cylinder.
+Assume that a person is shaped like a cylinder. The weight of the cylinder is a consequence of the volume of the cylinder. The volume of the cylinder is a consequence of growth in the height and width of the cylinder
 
 The volume of the cylinder is
+
 $$
 V = \pi r^{2}h
 $$
-While we do not know a person's radius, we can assume that it is constant proportion of height.
+While we do not know a person's radius, we can assume that it is constant proportion of height
+
 $$
 r=ph
 $$
 As weight is some proportion of volume. We have a formula below
+
 $$
 W=kV=k\pi p^{2}h^{3}
 $$
@@ -434,7 +442,8 @@ $$
 d <- Howell1
 ```
 
-We get rid of measurement scale by dividing the observed variables by reference values. The two new variables have means of 1, which free parameters' prior from measurement scale.
+We get rid of measurement scale by dividing the observed variables by reference values. The two new variables have means of 1, which free parameters' prior from measurement scale
+
 ```{r}
 d$w <- d$weight/mean(d$weight)
 d$h <- d$height/mean(d$height)
@@ -446,15 +455,17 @@ d$h <- d$height/mean(d$height)
 p is the ratio of the radius to the height. So, it must be greater than zero and less than one. It is also certainly less than one-half. Thus, we need a prior distribution for p that is bounded between zero and one with most of the prior mass below 0.5.
 
 Beta distribution is an option for parameters whose values lie in range of zero and one. Based on Beta distribution's mean calculation, the prior of p will be
+
 $$
 p \sim Beta(2,18)
 $$
+
 The parameter k is the proportion of volume that is weight. Theoretically, it just translates measurement scales. We know that k must be greater than 1. As w and h have means of 1, let set its prior mean around 2
 $$
 k \sim Exponential(0.5)
 $$
 
-## Initial statistical model
+## Initial statistical models
 $$
 W_{i} \sim LogNormal(\mu_{i},\sigma)\\
 exp(\mu_{i})=k \pi p^{2} h_{i}^{3}\\
@@ -480,6 +491,7 @@ for(i in 1:N){
   curve(k[i]*3.14*(p[i]^2)*(x^3), from=min(d$h),to=max(d$h),add=TRUE,col=col.alpha(rangi2,0.1))
 }
 ```
+
 The prior produces a small median value of weight. So, we need to adjust it to ensure the prior prediction to be reasonable.
 
 One of the least informative parameter is k. Thus, we will change its prior. As we need to increase the median value of weight, the mean of k will be upped.
@@ -500,7 +512,7 @@ for(i in 1:N){
 }
 ```
 
-## Adjusted statistical model
+## Adjusted statistical models
 
 $$
 W_{i} \sim LogNormal(\mu_{i},\sigma)\\
@@ -685,4 +697,5 @@ shade(w.pi,h.seq)
 ```{r}
 compare(m5.1, m5.2, func=PSIS)
 ```
+
 The first model outperforms the second in terms of expected predictive accuracy.
