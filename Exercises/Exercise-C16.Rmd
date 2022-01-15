@@ -1,0 +1,488 @@
+---
+title: "Exercise-C16"
+output: github_document
+---
+# Instalation
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(MASS)
+library(rstan)
+library(shape)
+library(tidyr)
+library(ggplot2)
+library(dagitty)
+library(gtools)
+library(ellipse)
+library(tidyverse)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+# 16E1
+
+Problems with the GLMs-plus-DAGs approach:
+* Not everything can be modeled as a GLM
+* GLMs sometime lack scientific information summarized in theories
+
+It is necessary to construct an actual structural causal model instead of using a heuristic DAG.
+
+# 16M1
+
+$$
+W_{i} \sim LogNormal(\mu_{i},\sigma)\\
+\mu_{i} = log(k) + log(\pi) + 2*log(p) + bH*log(h_{i})\\
+k \sim Exponential(0.5)\\
+p \sim Beta(2,18)\\
+\sigma \sim Exponential(1)
+$$
+
+```{r}
+data("Howell1")
+d <- Howell1
+d$w <- d$weight / mean(d$weight)
+d$h <- d$height / mean(d$height)
+```
+
+
+```{r}
+m16.1a <- ulam(
+  alist(
+    w ~ lognormal(mu, sigma),
+    mu <- log(k) + log(3.141593) + 2*log(p) + bH*log(h),
+    p ~ beta(2,18),
+    k ~ exponential(0.5),
+    sigma ~ exponential(1),
+    bH ~ normal(0,1)
+  ),
+  data=d, chains=4, cores=4, log_lik = TRUE
+)
+precis(m16.1a)
+```
+```{r}
+h_seq <- seq(from=0, to=max(d$h), length.out=30)
+w_sim <- sim(m16.1a, data=list(h=h_seq))
+mu_mean <- apply(w_sim, 2, mean)
+w_ci <- apply(w_sim, 2, PI)
+```
+
+
+```{r}
+plot(x=d$h, y=d$w, xlim=c(0,max(d$h)), ylim=c(0,max(d$w)),
+     col=rangi2, lwd=2, xlab="height (scaled)", ylab="weight (scaled)")
+lines(h_seq, mu_mean)
+shade(w_ci, h_seq)
+```
+
+```{r}
+m16.1b <- ulam(
+  alist(
+    w ~ lognormal(mu, sigma),
+    mu <- log(k) + log(3.141593) + 2*log(p) + 3*log(h),
+    p ~ beta(2,18),
+    k ~ exponential(0.5),
+    sigma ~ exponential(1)
+  ),
+  data=d, chains=4, cores=4, log_lik = TRUE
+)
+precis(m16.1b)
+```
+
+
+```{r}
+compare(m16.1a, m16.1b)
+```
+Freeing the parameter improves the performance of the model in term of WAIC. The estimated parameter for the exponent is smaller than 3.
+
+# 16M2
+
+```{r}
+data("Howell1")
+d <- Howell1
+d$w <- d$weight / mean(d$weight)
+d$h <- d$height / mean(d$height)
+```
+
+```{r}
+m16.2 <- ulam(
+  alist(
+    w ~ lognormal(mu, sigma),
+    mu <- log(k) + log(3.141593) + 2*log(p) + 3*log(h),
+    p ~ beta(2,18),
+    k ~ exponential(0.1),
+    sigma ~ exponential(5)
+  ),
+  data=d, chains=4, cores=4, log_lik = TRUE
+)
+precis(m16.2)
+```
+```{r}
+prior <- extract.prior(m16.2)
+precis(prior)
+```
+
+```{r}
+h_seq <- seq(from=0, to=max(d$h), length.out=30)
+w_sim <- sim(m16.2, data=list(h=h_seq), post=prior)
+mu_mean <- apply(w_sim, 2, mean)
+w_ci <- apply(w_sim, 2, PI)
+
+plot(x=d$h, y=d$w, xlim=c(0,max(d$h)), ylim=c(0,max(d$w)),
+     col=rangi2, lwd=2, xlab="height (scaled)", ylab="weight (scaled)")
+lines(h_seq, mu_mean)
+shade(w_ci, h_seq)
+```
+
+In comparison with the initial priors, there are two changes related to distribution of k and sigma. Tightening sigma erases extreme simulated values while adjusting k's distribution allows the prior predictive distribution to be more reasonable.
+
+# 16M4
+
+$$
+W_{i} \sim LogNormal(\mu_{i},\sigma)\\
+\mu_{i} = log(k) + log(\pi/6) + 3*log(h_{i})\\
+k \sim Exponential(0.2)\\
+\sigma \sim Exponential(1)
+$$
+
+```{r}
+data("Howell1")
+d <- Howell1
+d$w <- d$weight / mean(d$weight)
+d$h <- d$height / mean(d$height)
+```
+
+
+```{r}
+m16.4 <- ulam(
+  alist(
+    w ~ lognormal(mu, sigma),
+    mu <- log(k) + log(0.5236) + 3*log(h),
+    k ~ exponential(0.2),
+    sigma ~ exponential(1)
+  ),
+  data=d, chains=4, cores=4, log_lik = TRUE
+)
+precis(m16.4)
+```
+
+
+```{r}
+h_seq <- seq(from=0, to=max(d$h), length.out=30)
+w_sim <- sim(m16.4, data=list(h=h_seq))
+mu_mean <- apply(w_sim, 2, mean)
+w_ci <- apply(w_sim, 2, PI)
+
+plot(x=d$h, y=d$w, xlim=c(0,max(d$h)), ylim=c(0,max(d$w)),
+     col=rangi2, lwd=2, xlab="height (scaled)", ylab="weight (scaled)")
+lines(h_seq, mu_mean)
+shade(w_ci, h_seq)
+```
+
+
+```{r}
+compare(m16.1b, m16.4)
+```
+Compared to the cylinder-motivated model, the new model is slightly better. In the model, the height is two times of the radius and we don't need to deal with the p parameter. The prior of k is adjusted.
+
+# 16H1
+
+```{r}
+data("Panda_nuts")
+head(Panda_nuts)
+```
+
+```{r}
+Panda_nuts$sex_id <- as.integer(Panda_nuts$sex)
+```
+
+
+$$
+n_{i} \sim Poisson(\lambda_{i})\\
+\lambda_{i} = (1+a*sex)d_{i}\phi(1-exp(-kt_{i}))^{\theta}\\
+a \sim lognormal(log(1),0.1) \\
+\phi \sim LogNormal(log(1),0.1)\\
+k \sim LogNormal(log(2),0.25)\\
+\theta \sim LogNormal(log(5),0.25)
+$$
+
+```{r}
+N <- 1e4
+phi <- rlnorm(n=N,log(1),0.1)
+k <- rlnorm(N,log(2),0.25)
+theta <- rlnorm(N,log(5),0.25)
+a <- rexp(n=N,2)
+```
+
+```{r}
+plot(NULL, xlim=c(0,1.5), ylim=c(0,2), xaxt="n",
+     xlab="age", ylab="nuts per second")
+at <- c(0,0.25,0.5,0.75,1,1.25,1.5)
+axis(side=1, at=at, labels=round(at*max(Panda_nuts$age)))
+for(i in 1:20){
+  curve(phi[i]*(1-exp(-k[i]*x))^theta[i], add=TRUE, col=grau(), lwd=1.5)
+  curve((1+a[i])*phi[i]*(1-exp(-k[i]*x))^theta[i], add=TRUE, col=rangi2, lwd=1.5)
+}
+```
+
+
+```{r}
+dat_list <- list(
+  n = as.integer(Panda_nuts$nuts_opened),
+  age = Panda_nuts$age / max(Panda_nuts$age),
+  seconds = Panda_nuts$seconds,
+  sex = Panda_nuts$sex_id
+)
+```
+
+
+```{r}
+h16.1 <- ulam(
+  alist(
+    n ~ poisson(lambda),
+    lambda <- (1 + a*sex)*seconds*phi*(1 - exp(-k*age))^theta,
+    a ~ exponential(2),
+    phi ~ lognormal(log(1), 0.1),
+    k ~ lognormal(log(2), 0.25),
+    theta ~ lognormal(log(5), 0.25)
+  ),
+  data=dat_list, chains=4
+)
+precis(h16.1)
+```
+```{r}
+post <- extract.samples(h16.1)
+plot(NULL, xlim=c(0,1), ylim=c(0,1.5),
+     xlab="age", ylab="nuts per second", xaxt="n")
+at <- c(0,0.25,0.5,0.75,1,1.25,1.5)
+axis(side=1, at=at, labels=round(at*max(Panda_nuts$age)))
+
+pts <- dat_list$n / dat_list$seconds
+point_size <- normalize(dat_list$seconds)
+
+points(jitter(dat_list$age), pts, col=rangi2, lwd=2, cex=point_size*3)
+
+for(i in 1:30){
+   with(post,
+        curve(phi[i]*(1-exp(-k[i]*x))^theta[i], add=TRUE, col=grau()))
+ }
+
+ for(i in 1:30){
+   with(post,
+        curve((1+a[i])*phi[i]*(1-exp(-k[i]*x))^theta[i], add=TRUE, col=rangi2))
+ }
+```
+# 16H2
+
+$$
+n_{i} \sim Poisson(\lambda_{i})\\
+\lambda_{i} = d_{i}\phi_{ID}(1-exp(-kt_{i}))^{\theta}\\
+\phi_{ID} \sim LogNormal(\mu,\sigma)\\
+\mu \sim Normal(log(1),0.1)\\
+\sigma \sim Exponential(1)\\
+k \sim LogNormal(log(2),0.25)\\
+\theta \sim LogNormal(log(5),0.25)
+$$
+
+```{r}
+dat_list <- list(
+  n = as.integer(Panda_nuts$nuts_opened),
+  age = Panda_nuts$age / max(Panda_nuts$age),
+  seconds = Panda_nuts$seconds,
+  sex = Panda_nuts$sex_id,
+  ID = Panda_nuts$chimpanzee
+)
+```
+
+
+```{r}
+h16.2 <- ulam(
+  alist(
+    n ~ poisson(lambda),
+    lambda <- seconds*phi[ID]*(1 - exp(-k*age))^theta,
+    phi[ID] ~ lognormal(mu,0.1),
+    mu ~ exponential(1),
+    k ~ lognormal(log(2), 0.25),
+    theta ~ lognormal(log(5), 0.25)
+  ),
+  data=dat_list, chains=4
+)
+precis(h16.2,2)
+```
+
+
+```{r}
+post <- extract.samples(h16.2)
+plot(NULL, xlim=c(0,1), ylim=c(0,1.5),
+     xlab="age", ylab="nuts per second", xaxt="n")
+at <- c(0,0.25,0.5,0.75,1,1.25,1.5)
+axis(side=1, at=at, labels=round(at*max(Panda_nuts$age)))
+
+pts <- dat_list$n / dat_list$seconds
+point_size <- normalize(dat_list$seconds)
+
+points(jitter(dat_list$age), pts, col=rangi2, lwd=2, cex=point_size*3)
+
+for(i in 1:30){
+   with(post,
+        curve(phi[,9][i]*(1-exp(-k[i]*x))^theta[i], add=TRUE, col=grau()))
+ }
+```
+
+
+```{r}
+plot(precis(h16.2,2,pars="phi"))
+```
+
+# 16H3
+
+```{r}
+data(Lynx_Hare)
+dat_ar1 <- list(
+    L = Lynx_Hare$Lynx[2:21],
+    L_lag1 = Lynx_Hare$Lynx[1:20],
+    H = Lynx_Hare$Hare[2:21],
+    H_lag1 = Lynx_Hare$Hare[1:20] )
+```
+
+$$
+L_{t} \sim LogNormal(log(\mu_{L,t}),\sigma_{L})\\
+\mu_{L.t} = \alpha_{L} + \beta_{LL}L_{t-1} + \beta_{LH}H_{t-1}\\
+H_{t} \sim LogNormal(log(\mu_{H,t}),\sigma_{H})\\
+\mu_{H.t} = \alpha_{H} + \beta_{HH}H_{t-1} + \beta_{HL}L_{t-1}
+$$
+
+```{r}
+h16.3 <- ulam(
+  alist(
+    L ~ lognormal(log(mu_L),sigma_L),
+    mu_L <- aL + bLL*L_lag1 + bLH*H_lag1,
+    H ~ lognormal(log(mu_H),sigma_H),
+    mu_H <- aH + bHH*H_lag1 + bHL*L_lag1,
+    c(bLH,bHL) ~ half_normal(1,0.5),
+    c(bLL,bHH) ~ half_normal(0.5,0.5),
+    c(sigma_L, sigma_H) ~ exponential(1),
+    c(aL, aH) ~ normal(0,1)
+  ),
+  data=dat_ar1, chains=4, cores=4, log_lik = TRUE
+)
+precis(h16.3)
+```
+
+
+```{r}
+post <- extract.samples(h16.3)
+plot(x=2:21, dat_ar1$H, pch=16, ylim=c(0,120),
+     xlab="year",ylab="thousands of pelts", xaxt="n")
+at <- c(1,11,21)
+axis(side=1, at=at, labels=Lynx_Hare$Year[at])
+points(x=2:21, dat_ar1$L, col=rangi2, pch=16)
+
+pop <- link(h16.3)
+for (i in 1:20){
+  lines(2:21, pop$mu_L[i,], col=rangi2)
+  lines(2:21, pop$mu_H[i,])
+}
+```
+
+# 16H4
+
+```{r}
+data(Lynx_Hare)
+dat_ar1 <- list(
+    L = Lynx_Hare$Lynx[3:21],
+    L_lag1 = Lynx_Hare$Lynx[2:20],
+    L_lag2 = Lynx_Hare$Lynx[1:19],
+    H = Lynx_Hare$Hare[3:21],
+    H_lag1 = Lynx_Hare$Hare[2:20],
+    H_lag2 = Lynx_Hare$Hare[1:19]
+)
+```
+
+
+```{r}
+h16.4 <- ulam(
+  alist(
+    L ~ lognormal(log(mu_L),sigma_L),
+    mu_L <- aL + bLL1*L_lag1 + bLH1*H_lag1 + bLL2*L_lag2 + bLH2*H_lag2,
+    H ~ lognormal(log(mu_H),sigma_H),
+    mu_H <- aH + bHH1*H_lag1 + bHL1*L_lag1 + bHH2*H_lag1 + bHL2*L_lag1,
+    c(bLH1,bHL1,bLH2,bHL2) ~ half_normal(1,0.5),
+    c(bLL1,bHH1,bLL2,bHH2) ~ half_normal(0.5,0.5),
+    c(sigma_L, sigma_H) ~ exponential(1),
+    c(aL, aH) ~ normal(0,1)
+  ),
+  data=dat_ar1, chains=4, cores=4, log_lik = TRUE
+)
+precis(h16.4)
+```
+
+
+```{r}
+post <- extract.samples(h16.4)
+plot(x=3:21, dat_ar1$H, pch=16, ylim=c(0,120),
+     xlab="year",ylab="thousands of pelts", xaxt="n")
+at <- c(1,11,21)
+axis(side=1, at=at, labels=Lynx_Hare$Year[at])
+points(x=3:21, dat_ar1$L, col=rangi2, pch=16)
+
+pop <- link(h16.4)
+for (i in 1:20){
+  lines(3:21, pop$mu_L[i,], col=rangi2)
+  lines(3:21, pop$mu_H[i,])
+}
+```
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

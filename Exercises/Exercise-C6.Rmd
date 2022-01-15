@@ -1,0 +1,438 @@
+---
+title: "Exercise-C6"
+output: github_document
+---
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+
+```{r}
+library(rethinking)
+library(dagitty)
+library(parallel)
+```
+
+# 6E1
+
+Multicollinearity
+Post-treatment bias
+Collider bias
+
+# 6E2
+
+An example of Collider Bias: Neighborhood area and selling time both impacts sale prices of houses
+
+# 6E3
+
+Four elemental confounds: Fork, Pipe, Collider and Descendant
+
+Fork and Pipe: X is independent on Y, conditional on Z
+Collider: X is dependent on Y, conditional on Z
+Descendant: X is dependent on Y, conditional on D
+
+# 6E4
+
+A collider bias is that Z causally impacts both X and Y. Conditioning on the collider, Z, will create statistical, not causal, correlation between X and Y.
+
+# 6M1
+
+```{r}
+dag_6.1 <- dagitty("dag{U [unobserved]
+                  V [unobserved]
+                   X->Y
+                   X<-U<-A->C<-V->Y
+                   U->B<-C}")
+coordinates(dag_6.1) <- list(x=c(X=0,Y=2,U=0,B=1,C=2,A=1,V=2),
+                               y=c(X=0,Y=0,U=1,B=0.5,A=1.5,C=1,V=0.5))
+drawdag(dag_6.1)
+```
+There are two paths from X to Y:
+(1): X<-U->B<-C<-V->Y
+(2): X<-U<-A->C<-V->Y
+
+Both paths are closed because there are colliders. Thus, we don't need to condition on any variables unless we want to create a confound.
+
+# 6M2
+
+```{r}
+N <- 100
+X <- rnorm(n=N,mean=0,sd=1)
+Z <- rnorm(n=N,mean=X,sd=0.1)
+Y <- rnorm(n=N,mean=Z,sd=1)
+d <- data.frame(X=X,Z=Z,Y=Y)
+```
+
+
+```{r}
+m6.2.1 <- quap(
+  alist(
+    Y ~ dnorm(mu,sigma),
+    mu <- a + bX*X + bZ*Z,
+    a ~ dnorm(0,1),
+    bX ~ dnorm(0,1),
+    bZ ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+precis(m6.2.1)
+```
+
+```{r}
+m6.2.2 <- quap(
+  alist(
+    Y ~ dnorm(mu,sigma),
+    mu <- a + bX*X,
+    a ~ dnorm(0,1),
+    bX ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+```{r}
+precis(m6.2.2)
+```
+
+Including both X and Z in the model makes their coefficients insignificant. There is a multicolinearity that is clearly showed via the second model's outcome
+
+# 6M3
+
+Top left DAG:
+(1): X<-Z->Y
+(2): X<-Z<-A->Y
+
+Both are open. (1) has a fork while (2) has a pine and a fork. We can condition on Z
+
+Bottom left DAG:
+(1): X->Z<-Y
+(2): X<-A->Z<-Y
+
+Both are closed with collider Z. We don't need to condition on any variables
+
+Top right DAG:
+(1): X->Z->Y
+(2): X->Z<-A->Y
+
+(1) is open with a pipe while (2) is closed with a collider. Let's condition on Z
+
+Bottom right DAG:
+(1): X<-A->Z->Y
+(2): X->Z->Y
+
+Both are open and we need to condition on Z
+
+# 6H1
+
+```{r}
+data("WaffleDivorce")
+d <- WaffleDivorce
+head(d)
+```
+
+
+```{r}
+colnames(d)
+```
+
+
+```{r}
+d$std_WaffleHouses <- standardize(d$WaffleHouses)
+d$std_divorce <- standardize(d$Divorce)
+```
+
+
+```{r}
+h6.1.1 <- quap(
+  alist(
+    std_divorce ~ dnorm(mu, sigma),
+    mu <- a + bW*std_WaffleHouses,
+    a ~ dnorm(0,1),
+    bW ~ dlnorm(meanlog = 0, sdlog = 1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+precis(h6.1.1)
+```
+
+```{r}
+w_seq = seq(from=-1,to=5,n=1e4)
+
+mu <- link(h6.1.1, data.frame(std_WaffleHouses=w_seq))
+mu_mean <- apply(mu,2,mean)
+mu_PI <- apply(mu,2,PI)
+
+W_sim <- sim(h6.1.1, data=list(std_WaffleHouses=w_seq))
+W_PI <- apply(W_sim,2,PI,prob=0.89)
+```
+
+
+```{r}
+plot(std_divorce ~ std_WaffleHouses, data=d,col=col.alpha(rangi2,alpha=0.5))
+lines(w_seq, mu_mean)
+shade(W_PI,w_seq)
+shade(mu_PI,w_seq)
+```
+
+```{r}
+Southern.states = c("Alabama","Arkansas","Delaware","Florida","Georgia","Kentucky","Louisiana","Maryland","Mississippi","North Carolina","Oklahoma","South Carolina","Tennessee","Texas","Virginia","West Virginia","District of Columbia")
+```
+
+
+```{r}
+d$Southern <- as.factor(ifelse(d$Location %in% Southern.states,2,1))
+```
+
+
+```{r}
+h6.1.2 <- quap(
+  alist(
+    std_divorce ~ dnorm(mu, sigma),
+    mu <- a[Southern] + bW*std_WaffleHouses,
+    a[Southern] ~ dnorm(0,1),
+    bW ~ dlnorm(meanlog = 0, sdlog = 1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+precis(h6.1.2, depth=2)
+```
+
+# 6H3
+
+```{r}
+data("foxes")
+d <- foxes
+head(d)
+```
+
+
+```{r}
+d$std.area <- standardize(d$area)
+d$std.weight <- standardize(d$weight)
+```
+
+
+```{r}
+set.seed(2971)
+N <- 100
+a <- rnorm(n=N, mean = 4, sd = 1)
+b <- rnorm(n=N, mean=0, sd=1)
+```
+
+
+```{r}
+plot(NULL, xlim=range(d$std.area),ylim=c(-2,10),
+     xlab='area', ylab='weight')
+mtext('a ~ dnorm(4,1)')
+for(i in 1:N){
+  curve(a[i] + b[i]*(x),
+        from=min(d$std.area), to=max(d$std.area), add=TRUE,
+        col=col.alpha('black',0.2))
+}
+```
+
+```{r}
+h6.3 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bA*std.area,
+    a ~ dnorm(4,1),
+    bA ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data=d
+)
+```
+
+```{r}
+precis(h6.3)
+```
+
+```{r}
+A_seq = seq(from=-2,to=2,n=1e4)
+mu <- link(h6.3, data.frame(std.area=A_seq))
+mu.mean <- apply(mu,2,mean)
+mu.PI <- apply(mu,2,PI,prob=0.89)
+```
+
+```{r}
+sim.weight <- sim(fit=h6.3, data=list(std.area=A_seq))
+```
+
+```{r}
+weight.mu <- apply(sim.weight,2,mean)
+weight.PI <- apply(sim.weight,2,PI,prob=0.89)
+```
+
+
+```{r}
+plot(weight ~ std.area, data=d, col=col.alpha(rangi2,alpha=0.5))
+lines(A_seq,mu.mean)
+shade(mu.PI,A_seq)
+shade(weight.PI,A_seq)
+```
+# 6H4
+
+```{r}
+N <- 100
+a <- rnorm(N,4,1)
+b <- rnorm(N,0,1)
+```
+
+
+```{r}
+plot(NULL, xlim=range(d$avgfood),ylim=range(d$weight),
+     xlab='food', ylab='weight')
+mtext('b ~ dnorm(0,1)')
+for(i in 1:N){
+  curve(a[i] + b[i]*(x),
+        from=min(d$avgfood), to=max(d$avgfood), add=TRUE,
+        col=col.alpha('black',0.2))
+}
+```
+
+```{r}
+h6.4 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bF*avgfood,
+    a ~ dnorm(4,1),
+    bF ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+precis(h6.4)
+```
+Food does not have a significant impact on weight
+
+# 6H5
+
+```{r}
+h6.5 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bG*groupsize,
+    a ~ dnorm(4,1),
+    bG ~ dnorm(4,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+```{r}
+precis(h6.5)
+```
+# 6H.6
+
+```{r}
+h6.6 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bG*groupsize + bA*avgfood,
+    a ~ dnorm(4,1),
+    bG ~ dnorm(4,1),
+    bA ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+precis(h6.6)
+```
+
+Three above models show that regress weight on both avgfood and groupsize reveals these predictor variables impact. While avgfood has a positive impact, groupsize is opposite. This is an example of masked relationship.
+
+The DAG should be adjusted and remove the impact of avgfood on groupsize
+
+```{r}
+dag_6h.6 <- dagitty("dag{area->avgfood; avgfood->weight; groupsize->weight}")
+coordinates(dag_6h.6) <- list(x=c(area=0,avgfood=0,weight=1,groupsize=2),
+                               y=c(area=2,avgfood=1,weight=0,groupsize=1))
+drawdag(dag_6h.6)
+```
+# 6H.7
+
+```{r}
+N <- 100
+area <- rnorm(n=N,mean = 3, sd = 1)
+avgfood <- rnorm(n=N,mean=area*0.5,sd=1)
+groupsize <- rnorm(n=N,mean=4,sd=2)
+weight <- rlnorm(n=N,meanlog=avgfood/groupsize,sdlog=1)
+d <- data.frame(area=area,avgfood=avgfood,groupsize=groupsize,weight=weight)
+```
+
+
+```{r}
+h6.7 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bG*groupsize + bA*avgfood,
+    a ~ dnorm(4,1),
+    bG ~ dnorm(4,1),
+    bA ~ dnorm(0,1),
+    sigma ~ dexp(1),
+    
+    groupsize ~ dnorm(mu_G,sigma_G),
+    mu_G <- aG + bGA*avgfood,
+    aG ~ dnorm(4,1),
+    bGA ~ dnorm(0,1),
+    sigma_G ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+precis(h6.7)
+```
+
+
+```{r}
+F_seq <- seq(from=-2,to=5,n=1e4)
+sim_data <- data.frame(avgfood=F_seq)
+s <- sim(fit=h6.7, data=data.frame(avgfood=F_seq), vars=c("weight","groupsize"))
+```
+
+
+```{r}
+colMeans(s$groupsize)
+```
+
+
+```{r}
+plot(sim_data$avgfood, colMeans(s$groupsize), ylim=c(0,9), type="l",
+     xlab="manipulated avgfood", ylab="couterfactual groupsize")
+shade(apply(s$groupsize,2,PI), sim_data$avgfood)
+mtext("Total counterfactual effect of avgfood on groupsize")
+```

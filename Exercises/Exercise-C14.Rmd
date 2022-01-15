@@ -1,0 +1,912 @@
+---
+title: "Exercise-C14"
+output: github_document
+---
+
+# Boilerplate
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(MASS)
+library(rstan)
+library(shape)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(dagitty)
+library(gtools)
+library(ellipse)
+library(tidyverse)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+# 14E1
+
+$$
+y_{i} \sim Normal(\mu_{i},\sigma)\\
+\mu_{i} = \alpha_{GROUP[i]} + \beta_{GROUP[i]}x_{i}\\
+\left( \begin{array}{c}
+\alpha_{GROUP}\\
+\beta_{GROUP}\end{array} \right) \sim MVNormal(\left( \begin{array}{c}
+\alpha\\
+\beta\end{array} \right)),S)\\
+S = \left( \begin{array}{cc}
+\sigma_{\alpha} & 0\\
+0 & \sigma_{\beta}\end{array} \right) R \left( \begin{array}{cc}
+\sigma_{\alpha} & 0\\
+0 & \sigma_{\beta}\end{array} \right)\\
+\alpha \sim Normal(0,10)\\
+\beta \sim Normal(0,1)\\
+\sigma \sim Exponential(1)\\
+\sigma_{\alpha} \sim Exponential(1)\\
+\sigma_{\beta} \sim Exponential(1)\\
+R \sim LKJcorr(2)
+$$
+# 14E2
+
+Revisiting the example of cafe, when both intercepts and slopes are smaller than the average, the model forces them to converge into the grand mean. In this case, intercepts and slopes are positively correlated.
+
+# 14E3
+
+Look at the chimpanzees example, the raw parameters are 76 while the number of effective parameters are only 27. The reason is that the two varying effects for actors and blocks regularize themselves and the amount of shrinkage averages over the entire posterior.
+
+# 14M1
+
+
+```{r}
+# Simulating data for the example of cafe
+# Simulated 20 individual cafes and their average properties
+
+a <- 3.5
+b <- (-1)
+sigma_a <- 1
+sigma_b <- 0.5
+rho <- 0
+Mu <- c(a,b)
+```
+
+The matrix of variances and covariances
+$$
+\left( \begin{array}{cc}
+\sigma^{2}_{\alpha} & \sigma_{\alpha}\sigma_{\beta}\rho \\
+\sigma_{\alpha}\sigma_{\beta}\rho & \sigma^{2}_{\beta} \end{array} \right)
+$$
+
+
+```{r}
+# Build a covariance matrix
+cov_ab <- sigma_a*sigma_b*rho
+Sigma <- matrix(c(sigma_a^2,cov_ab,cov_ab,sigma_b^2),ncol=2)
+Sigma
+```
+
+```{r}
+N_cafes <- 20
+```
+
+
+```{r}
+set.seed(5)
+vary_effects <- mvrnorm(n=N_cafes,mu=Mu,Sigma=Sigma)
+```
+
+
+```{r}
+a_cafe <- vary_effects[,1]
+b_cafe <- vary_effects[,2]
+```
+
+```{r}
+# Prior
+
+plot(x=a_cafe, y=b_cafe, pch=16, col=rangi2, xlab="intercepts (a_cafe)",
+     ylab="slopes (b_cafe)")
+for(l in c(0.1,0.3,0.5,0.8,0.99)){
+  lines(ellipse(x=Sigma, centre=Mu,level=l), col=col.alpha("black",0.2))
+}
+```
+
+
+```{r}
+# Simulate 10 visits to each cafe, 5 in the morning and 5 in the afternoon
+
+set.seed(22)
+N_visits <- 10
+afternoon <- rep(x=0:1,N_visits*N_cafes/2)
+cafe_id <- rep(x=1:N_cafes,each=N_visits)
+mu <- a_cafe[cafe_id] + b_cafe[cafe_id]*afternoon
+sigma <- 0.5
+wait <- rnorm(n=N_visits*N_cafes,mean=mu,sd=sigma)
+d <- data.frame(cafe=cafe_id, afternoon=afternoon, wait=wait)
+dim(d)
+```
+
+```{r}
+set.seed(869)
+m14.1 <- ulam(
+  alist(
+    wait ~ normal(mu, sigma),
+    mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+    c(a_cafe,b_cafe)[cafe] ~ multi_normal(c(a,b),Rho,sigma_cafe),
+    a ~ normal(5,2),
+    b ~ normal(-1,0.5),
+    sigma_cafe ~ exponential(1),
+    sigma ~ exponential(1),
+    Rho ~ lkj_corr(2) #eta=2, K is detected by the function
+  ),
+  data=d, chains=4,cores=4
+)
+precis(m14.1,2)
+```
+
+```{r}
+post <- extract.samples(m14.1)
+dens(post$Rho[,1,2], xlim=c(-1,1), col="blue")
+text(0.5,1.5,"posterior",col="blue")
+
+R <- rlkjcorr(n=1e4,K=2,eta=2)
+dens(R[,1,2],lty=2, add=TRUE)
+text(0.5,0.7,"prior")
+```
+
+
+```{r}
+m14.1b <- ulam(
+  alist(
+    wait ~ normal(mu, sigma),
+    mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+    c(a_cafe,b_cafe)[cafe] ~ multi_normal(c(a,b),Rho,sigma_cafe),
+    a ~ normal(5,2),
+    b ~ normal(-1,0.5),
+    sigma_cafe ~ exponential(1),
+    sigma ~ exponential(1),
+    Rho ~ lkj_corr(1)
+  ),
+  data=d, chains=4,cores=4
+)
+precis(m14.1b,2)
+```
+
+
+```{r}
+post.b <- extract.samples(m14.1b)
+dens(post.b$Rho[,1,2], xlim=c(-1,1),col="blue")
+text(-0.2,2,"posterior",col="blue")
+R <- rlkjcorr(n=1e4,K=2,eta=1)
+dens(R[,1,2],lty=2, add=TRUE)
+text(0.5,0.7,"prior")
+```
+
+
+```{r}
+m14.1c <- ulam(
+  alist(
+    wait ~ normal(mu, sigma),
+    mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+    c(a_cafe,b_cafe)[cafe] ~ multi_normal(c(a,b),Rho,sigma_cafe),
+    a ~ normal(5,2),
+    b ~ normal(-1,0.5),
+    sigma_cafe ~ exponential(1),
+    sigma ~ exponential(1),
+    Rho ~ lkj_corr(4)
+  ),
+  data=d, chains=4,cores=4
+)
+precis(m14.1c,2)
+```
+
+
+```{r}
+post.c <- extract.samples(m14.1c)
+dens(post.c$Rho[,1,2], xlim=c(-1,1),col="blue")
+text(-0.2,2,"posterior",col="blue")
+R <- rlkjcorr(n=1e4,K=2,eta=4)
+dens(R[,1,2],lty=2, add=TRUE)
+text(0.5,0.7,"prior")
+```
+
+```{r}
+# Check the shrinkage by estimating and plotting posterior distributions for intercepts and slopes of each cafe
+
+# Plot the un-pooled estimates and posterior means first
+a1 <- sapply(X=1:N_cafes,
+             FUN = function(i){mean(wait[cafe_id==i & afternoon== 0])})
+b1 <- sapply(X=1:N_cafes,function(i){mean(wait[cafe_id==i & afternoon==1])}) - a1
+
+# Extract posterior means of partially pooled estimates
+post <- extract.samples(m14.1)
+a2 <- apply(post$a_cafe,2,mean)
+b2 <- apply(post$b_cafe,2,mean)
+```
+
+```{r}
+# Plot un-pooled parameters
+plot(x=a1,y=b1,xlab="intercept",ylab="slope",
+     pch=16, col=rangi2, ylim=c(min(b1)-0.1,max(b1)+0.1),
+     xlim=c(min(a1)-0.1,max(a1)+0.1))
+# Plot partially pooled parameters
+points(x=a2,y=b2,pch=1)
+for(i in 1:N_cafes){
+  lines(c(a1[i],a2[i]), c(b1[i],b2[i]))
+}
+
+Mu_est <- c(mean(post$a), mean(post$b))
+rho_est <- mean(post$Rho[,1,2])
+sa_est <- mean(post$sigma_cafe[,1])
+sb_est <- mean(post$sigma_cafe[,2])
+cov_ab <- sa_est*sb_est*rho_est
+Sigma_est <- matrix(c(sa_est^2,cov_ab,cov_ab,sb_est^2),ncol=2)
+for(l in c(0.1,0.3,0.5,0.8,0.99)){
+  #reconstruct Sigma and Mu to draw the ellipse
+  lines(ellipse(Sigma_est,centre=Mu_est,level=l),
+        col=col.alpha("black"))
+}
+```
+
+```{r}
+wait_morning_1 <- a1
+wait_afternoon_1 <- a1+b1
+wait_morning_2 <- a2
+wait_afternoon_2 <- a2+b2
+```
+
+```{r}
+# plot(x=wait_morning_1, y=wait_afternoon_1, xlab="morning wait",
+#      ylab="afternoon_wait", pch=16, col=rangi2,
+#      ylim=c(min(wait_afternoon_1)-0.1,max(wait_afternoon_1)+0.1),
+#      xlim=c(min(wait_morning_1)-0.1,max(wait_morning_1)+0.1))
+# points(wait_morning_2,wait_afternoon_2,pch=1)
+# for(i in 1:N_cafes){
+#   lines(c(wait_morning_1[i],wait_morning_2[i]),
+#         c(wait_afternoon_1[i],wait_afternoon_2[i]))
+# }
+
+# Plot raw data points of waiting times
+plot(x=a1,y=a1+b1,xlab="morning wait",ylab="afternoon wait",
+     pch=16, col=rangi2, ylim=c(min(a1+b1)-0.1,max(a1+b1)+0.1),
+     xlim=c(min(a1)-0.1,max(a1)+0.1))
+
+# Plot posterior estimates of waiting times
+points(x=a2,y=a2+b2,pch=1)
+for(i in 1:N_cafes){
+  lines(c(a1[i],a2[i]), c(a1[i]+b1[i],a2[i]+b2[i]))
+}
+
+abline(a=0,b=1,lty=2)
+
+v <- mvrnorm( 1e4 , Mu_est , Sigma_est )
+v[,2] <- v[,1] + v[,2] # calculate afternoon wait
+Sigma_est2 <- cov(v)
+Mu_est2 <- Mu_est
+Mu_est2[2] <- Mu_est[1]+Mu_est[2]
+# draw contours
+for ( l in c(0.1,0.3,0.5,0.8,0.99) )
+    lines(ellipse(Sigma_est2,centre=Mu_est2,level=l),
+        col=col.alpha("black",0.5))
+```
+
+After resetting $\rho$ at 0, the posterior distribution of the correlation centers around 0 and it is consistent even when weaker informative priors are used.
+
+# 14M2
+
+
+```{r}
+# Simulating data for the example of cafe
+# Simulated 20 individual cafes and their average properties
+
+a <- 3.5
+b <- (-1)
+sigma_a <- 1
+sigma_b <- 0.5
+rho <- (-0.7)
+Mu <- c(a,b)
+```
+
+```{r}
+# Build a covariance matrix
+cov_ab <- sigma_a*sigma_b*rho
+Sigma <- matrix(c(sigma_a^2,cov_ab,cov_ab,sigma_b^2),ncol=2)
+Sigma
+```
+
+```{r}
+N_cafes <- 20
+```
+
+
+```{r}
+set.seed(5)
+vary_effects <- mvrnorm(n=N_cafes,mu=Mu,Sigma=Sigma)
+```
+
+
+```{r}
+a_cafe <- vary_effects[,1]
+b_cafe <- vary_effects[,2]
+```
+
+```{r}
+# Simulate 10 visits to each cafe, 5 in the morning and 5 in the afternoon
+
+set.seed(22)
+N_visits <- 10
+afternoon <- rep(x=0:1,N_visits*N_cafes/2)
+cafe_id <- rep(x=1:N_cafes,each=N_visits)
+mu <- a_cafe[cafe_id] + b_cafe[cafe_id]*afternoon
+sigma <- 0.5
+wait <- rnorm(n=N_visits*N_cafes,mean=mu,sd=sigma)
+d <- data.frame(cafe=cafe_id, afternoon=afternoon, wait=wait)
+dim(d)
+```
+
+```{r}
+m14.2a <- ulam(
+  alist(
+    wait ~ normal(mu, sigma),
+    mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+    a_cafe[cafe] ~ normal(a,sigma_a),
+    b_cafe[cafe] ~ normal(b, sigma_b),
+    a ~ normal(0,10),
+    b ~ normal(0,10),
+    c(sigma_a, sigma_b, sigma) ~ exponential(1)
+  ),
+  data=d, chains=4,cores=4, log_lik = TRUE
+)
+precis(m14.2a,2)
+```
+
+
+```{r}
+m14.2b <- ulam(
+  alist(
+    wait ~ normal(mu, sigma),
+    mu <- a_cafe[cafe] + b_cafe[cafe]*afternoon,
+    c(a_cafe,b_cafe)[cafe] ~ multi_normal(c(a,b),Rho,sigma_cafe),
+    a ~ normal(0,10),
+    b ~ normal(0,10),
+    sigma_cafe ~ exponential(1),
+    sigma ~ exponential(1),
+    Rho ~ lkj_corr(2) #eta=2, K is detected by the function
+  ),
+  data=d, chains=4,cores=4, log_lik = TRUE
+)
+precis(m14.2b,3)
+```
+
+
+```{r}
+compare(m14.2a, m14.2b, func = WAIC)
+```
+The varying effect model is preferred by WAIC, but the different is mild.
+
+# 14M3
+
+
+*Aggregated binomial: Graduate school admission*
+
+```{r}
+data("UCBadmit")
+d <- UCBadmit
+head(d)
+```
+
+```{r}
+dat_list <- with(d, list(
+  admit = admit,
+  applications = applications,
+  gid = ifelse(applicant.gender == "male",1,2),
+  dept_id = rep(1:6, each=2)
+))
+```
+
+$$
+A_{i} \sim Binomial(N_{i},p_{i})\\
+logit(p_{i}) = \alpha_{GID} + \delta_{GID,DEPT}\\
+\left( \begin{array}{c}
+\alpha_{GID}\\
+\delta_{GID,DEPT}\end{array} \right) \sim MVNormal(\left( \begin{array}{c}
+\alpha\\
+\delta\end{array} \right)),S)\\
+S = \left( \begin{array}{cc}
+\sigma_{\alpha} & 0\\
+0 & \sigma_{\delta}\end{array} \right) R \left( \begin{array}{cc}
+\sigma_{\alpha} & 0\\
+0 & \sigma_{\delta}\end{array} \right)\\
+\alpha \sim Normal(0,1.5)\\
+\delta \sim Normal(0,1.5)\\
+\sigma_{\alpha} \sim Exponential(1)\\
+\sigma_{\delta} \sim Exponential(1)\\
+R \sim LKJcorr(2)
+$$
+```{r}
+m14.3c <- ulam(
+  alist(
+    admit ~ binomial(applications, p),
+    logit(p) <- alpha[gid] + delta[dept_id, gid],
+    
+    vector[2]:delta[dept_id] ~ multi_normal(0, Rho, sigma),
+    
+    alpha[gid] ~ normal(0,1.5),
+    sigma ~ exponential(1),
+    Rho ~ lkj_corr(2)
+  ),
+  data=dat_list, chains=4, iter = 4000
+)
+
+precis(m14.3c, depth=3)
+```
+
+
+```{r}
+m14.3nc <- ulam(
+  alist(
+    admit ~ binomial(applications, p),
+    logit(p) <- alpha[gid] + delta[dept_id, gid],
+
+    #adaptive prior - non-centered
+    transpars> matrix[dept_id,2]:delta <- compose_noncentered(sigma, L_Rho, z),
+    matrix[2,dept_id]:z ~ normal(0,1),
+    #fixed priors
+    alpha[gid] ~ normal(0,1.5),
+    vector[2]:sigma ~ exponential(1),
+    cholesky_factor_corr[2]:L_Rho ~ lkj_corr_cholesky(2),
+
+    #compute ordinary correlation matrices from Cholesky factors
+    gq> matrix[2,2]:Rho <<- Chol_to_Corr(L_Rho)
+  ),
+  data=dat_list, chains=4, cores=4, log_lik=TRUE
+)
+precis(m14.3nc, depth=3)
+```
+
+
+```{r}
+neff_nc <- precis(m14.3nc, depth=3, pars=c("alpha","delta"))$n_eff
+neff_c <- precis(m14.3c, depth=3, pars=c("alpha","delta"))$n_eff
+plot(x=neff_c,y=neff_nc,xlab="centered (default)",
+     ylab="non-centered (cholesky)", lwd=1.5)
+abline(a=0,b=1,lty=2)
+```
+
+In the example, the centered model has a higher number of effective parameters.
+
+# 14M4
+
+```{r}
+data("Kline")
+d <- Kline
+head(d)
+```
+
+```{r}
+d$P <- scale(log(d$population))
+d$contact_id <- ifelse(d$contact=="high",2,1)
+```
+
+```{r}
+dat <- list(T=d$total_tools, P=d$population, cid=d$contact_id)
+m14.4a <- ulam(
+  alist(
+    T ~ dpois(lambda),
+    lambda <- exp(a[cid]) * P^b[cid]/g,
+    a[cid] ~ dnorm(1,1),
+    b[cid] ~ dexp(1),
+    g ~ dexp(1)
+  ),
+  data = dat, chains=4, log_lik = TRUE
+)
+precis(m14.4a,2)
+```
+
+```{r}
+m14.4b <- ulam(
+  alist(
+    T ~ dpois(lambda),
+    lambda <- exp(alpha[cid]) * P^beta[cid]/g,
+    c(alpha, beta)[cid] ~ multi_normal(c(a,b),Rho,sigma),
+    a ~ normal(1,1),
+    b ~ exponential(1),
+    c(sigma,g) ~ exponential(1),
+    Rho ~ lkj_corr(2)
+  ),
+  data=dat, chains=4, cores=4, log_lik=TRUE
+)
+precis(m14.4b,3)
+```
+
+```{r}
+compare(m14.4a, m14.4b)
+```
+Similar to 14M2, the varying effect model is preferred by WAIC, but the difference is mild. Noticeably, the number of effective parameter in that model is smaller than the other.It is due to a shrinkage caused by strict regularization as the model counts in the correlation between parameters.
+
+# 14M5
+
+
+```{r}
+data("Primates301")
+data("Primates301_nex")
+```
+
+
+```{r}
+library(ape)
+# plot(ladderize(Primates301_nex), type="fan", font=1, no.margin=TRUE,
+#      label.offset=1, cex=0.5)
+```
+
+An ordinary regression
+$$
+G \sim MVNormal(\mu, S)\\
+\mu_{i}=\alpha + \beta_{B}B_{i} + \beta_{M}M_{i}\\
+S=\sigma^{2}I
+$$
+
+```{r}
+d <- Primates301
+d$name <- as.character(d$name)
+dstan <- d[complete.cases(d$group_size, d$boby, d$brain),]
+spp_obs <- dstan$name
+```
+
+
+```{r}
+dat_list <- list(
+  N_spp = nrow(dstan),
+  M = standardize(log(dstan$body)),
+  B = standardize(log(dstan$brain)),
+  G = standardize(log(dstan$group_size)),
+  Imat = diag(nrow(dstan))
+)
+```
+
+
+```{r}
+m14.5a <- ulam(
+  alist(
+    G ~ multi_normal(mu, SIGMA),
+    mu <- a + bM*M + bB*B,
+    matrix[N_spp,N_spp]: SIGMA <- Imat*sigma_sq,
+    a ~ normal(0,1),
+    c(bM,bB) ~ normal(0,0.5),
+    sigma_sq ~ exponential(1)
+  ),
+  data=dat_list, chains=4, cores=4
+)
+precis(m14.5a)
+```
+The ordinal model shows a strong and positive association between brain size and group size and a negative association between body mass and group size. Combined with the outcome from the ordinal model in the chapter, body mass negatively influences group size and positively impacts brain size.
+
+*Brownian motion model*
+
+```{r}
+tree_trimmed <- keep.tip( Primates301_nex, spp_obs )
+Rbm <- corBrownian( phy=tree_trimmed )
+V <- vcv(Rbm)
+Dmat <- cophenetic( tree_trimmed )
+plot( Dmat, V , xlab="phylogenetic distance" , ylab="covariance" )
+```
+A pair of species with high phylogenetic distance will have low covariance.
+
+```{r}
+dat_list$V <- V[spp_obs, spp_obs]
+dat_list$R <- dat_list$V/max(V)
+```
+
+
+```{r}
+m14.5b <- ulam(
+  alist(
+    G ~ multi_normal(mu, SIGMA),
+    mu <- a + bM*M + bB*B,
+    matrix[N_spp,N_spp]:SIGMA <- R * sigma_sq,
+    a ~ normal(0,1),
+    c(bM,bB) ~ normal(0,0.5),
+    sigma_sq ~ exponential(1)
+  ),
+  data=dat_list, chains=4, cores=4
+)
+precis(m14.5b)
+```
+Using a different correlation matrix with phylogenetic distance information annihilates brain size
+
+```{r}
+dat_list$Dmat <- Dmat[spp_obs, spp_obs]/max(Dmat)
+```
+
+
+```{r}
+m14.5c <- ulam(
+  alist(
+    G ~ multi_normal(mu, SIGMA),
+    mu <- a + bM*M + bB*B,
+    matrix[N_spp,N_spp]: SIGMA <- cov_GPL1(Dmat, etasq, rhosq, 0.01),
+    a ~ normal(0,1),
+    c(bM,bB) ~ normal(0,0.5),
+    etasq ~ half_normal(1,0.25),
+    rhosq ~ half_normal(3,0.25)
+  ),
+  data=dat_list, chains=4, cores=4
+)
+precis(m14.5c)
+```
+The model with the OU process kernel decines the impact of brain size and body mass on group size as their coefficients are strongly variant.
+
+The posterior below shows that the model learns barely nothing from the data and the posterior mostly reflects the prior belief.
+
+The outcome is contradict to the model regressing brain size on group size and body mass. The latter shows that phylogenetic distance does not have clear impact on the covariance of species.
+
+```{r}
+post <- extract.samples(m14.5c)
+plot(NULL, xlim=c(0,max(dat_list$Dmat)), ylim=c(0,1.5),
+     xlab="phylogenetic distance", ylab="covariance")
+
+for(i in 1:30){
+  curve(post$etasq[i]*exp(-post$rhosq[i]*x), add=TRUE, col=rangi2)
+}
+
+eta <- abs(rnorm(n=1e3,mean=1,sd=0.25))
+rho <- abs(rnorm(n=1e3,mean=3,sd=0.25))
+d_seq <- seq(from=0,to=1,length.out=50)
+K <- sapply(d_seq, function(x){eta*exp(-rho*x)})
+
+lines(d_seq, colMeans(K), lwd=2)
+shade(apply(K,2,PI),d_seq)
+text(0.5,0.5,"prior")
+text(0.2,0.1,"posterior",col=rangi2)
+```
+
+# 14H1
+
+
+```{r}
+data("bangladesh")
+d <- bangladesh
+
+d$district_id <- as.integer(as.factor(d$district))
+d$urban_id <- as.integer(as.factor(d$urban))
+head(d)
+```
+
+```{r}
+dat <- list(
+  C = d$use.contraception,
+  D = d$district_id,
+  U = d$urban_id
+)
+```
+
+```{r}
+h14.1a <- ulam(
+  alist(
+    C ~ dbinom(1,p),
+    logit(p) <- a[D] + b[U],
+    a[D] ~ dnorm(a_bar,sigma_a),
+    b[U] ~ dnorm(b_bar, sigma_b),
+    c(a_bar, b_bar) ~ dnorm(0,10),
+    c(sigma_a, sigma_b) ~ dexp(1)
+  ),
+  data=dat, chains=4,log_lik=TRUE
+)
+precis(h14.1a)
+```
+
+
+```{r}
+h14.1b <- ulam(
+  alist(
+    C ~ dbinom(1,p),
+    logit(p) <- a[D],
+    a[D] ~ dnorm(a_bar,sigma_a),
+    a_bar ~ dnorm(0,10),
+    sigma_a ~ dexp(1)
+  ),
+  data=dat, chains=4,log_lik=TRUE
+)
+precis(h14.1b)
+```
+
+
+```{r}
+h14.1c <- ulam(
+  alist(
+    C ~ dbinom(1,p),
+    logit(p) <- b[U],
+    b[U] ~ dnorm(b_bar, sigma_b),
+    b_bar ~ dnorm(0,10),
+    sigma_b ~ dexp(1)
+  ),
+  data=dat, chains=4,log_lik=TRUE
+)
+precis(h14.1c)
+```
+
+
+```{r}
+h14.1cen <- ulam(
+  alist(
+    C ~ binomial(1,p),
+    logit(p) <- a_dist[D] + b_dist[D]*U,
+    c(a_dist, b_dist)[D] ~ multi_normal(c(a,b),Rho,sigma_dist),
+    a ~ normal(0,10),
+    b ~ normal(0,10),
+    sigma_dist ~ exponential(1),
+    Rho ~ lkj_corr(2)
+  ),
+  data=dat, chains=4,cores=4, log_lik = TRUE
+)
+precis(h14.1cen,3)
+```
+The correlation between district and urban is strongly negative. That means people living in urban areas uses more contraception than the other.
+
+Recall that adding Urban to the model h14.1a annihilates the coefficient of both Urban and District, which is opposite to h14.1cen which considers the correlation between these predictor variables.
+
+```{r}
+post <- extract.samples(h14.1cen)
+a2 <- apply(post$a_dist,2,mean)
+b2 <- apply(post$b_dist,2,mean)
+```
+
+
+```{r}
+plot(x=a2,y=b2,xlab="intercept",ylab="slope",
+     pch=16, col=rangi2, ylim=c(min(b2)-0.1,max(b2)+0.1),
+     xlim=c(min(a2)-0.1,max(a2)+0.1))
+```
+
+
+```{r}
+pre_urban <- sapply(X=1:dat$D,
+             FUN = function(i){mean(d$use.contraception[d$district_id==i & d$urban_id == 1])})
+pre_rural <- sapply(X=1:dat$D,function(i){mean(d$use.contraception[d$district_id==i & d$urban_id == 2])})
+```
+
+```{r}
+datp <- list(
+  D=rep(1:60, each=2),
+  U=rep(1:2, times=60)
+)
+```
+
+```{r}
+p_post <- link(h14.1cen, data=datp)
+p_mu <- apply(p_post,2,mean)
+p_ci <- apply(p_post,2,PI)
+```
+
+
+```{r}
+plot(NULL, xlim=c(1,60), ylim=c(0,1),
+     xlab="", ylab="posterior prob of using contraception", yaxt="n")
+axis(side=2, at=c(0,0.5,1),labels=c(0,0.5,1))
+
+xo <- 0.1
+for(i in (1:60)){
+  points(x=i,y=p_mu[2*i-1],pch=1,col="black")
+  points(x=i+xo,y=p_mu[2*i],pch=1,col=rangi2)
+  
+  lines(x=c(i,i),y=p_ci[,2*i-1],lwd=1)
+  lines(x=c(i,i)+xo,y=p_ci[,2*i],col=rangi2)
+}
+```
+
+The chart clearly shows that people living in urban areas have a higher probability of using contraception than people living in rural areas
+
+# 14H2
+
+```{r}
+dat$A <- d$age.centered
+dat$LC <- d$living.children
+```
+
+```{r}
+h14.2.1cen <- ulam(
+  alist(
+    C ~ binomial(1,p),
+    logit(p) <- a_dist[D] + b_dist[D]*U + bA*A + bLC*LC,
+    c(a_dist, b_dist)[D] ~ multi_normal(c(a,b),Rho,sigma_dist),
+    a ~ normal(0,10),
+    b ~ normal(0,10),
+    sigma_dist ~ exponential(1),
+    Rho ~ lkj_corr(2),
+    bA ~ normal(0,10),
+    bLC ~ normal(0,10)
+  ),
+  data=dat, chains=4,cores=4, log_lik = TRUE
+)
+precis(h14.2.1cen,3)
+```
+
+```{r}
+h14.2.2cen <- ulam(
+  alist(
+    C ~ binomial(1,p),
+    logit(p) <- a_dist[D] + b_dist[D]*U + bA*A + bLC*LC + bALC*A*LC,
+    c(a_dist, b_dist)[D] ~ multi_normal(c(a,b),Rho,sigma_dist),
+    a ~ normal(0,10),
+    b ~ normal(0,10),
+    sigma_dist ~ exponential(1),
+    Rho ~ lkj_corr(2),
+    c(bA,bLC,bALC) ~ normal(0,10)
+  ),
+  data=dat, chains=4,cores=4, log_lik = TRUE
+)
+precis(h14.2.2cen,3)
+```
+
+
+```{r}
+compare(h14.2.1cen, h14.2.2cen, h14.1cen)
+```
+The models imply that living children positively impact the use of contraception while the influence of age is unclear. The influence of district and urban is similar to the finding in 14H1 as women living in urban areas has a higher probability of using contraception than the others.
+
+# 14H3
+
+```{r}
+dat1 <- list(
+  C = d$use.contraception,
+  D = d$district_id,
+  U = d$urban_id,
+  alpha = rep(2,3),
+  A = d$age.centered,
+  LC = as.integer(d$living.children)
+)
+```
+
+
+```{r}
+h14.3.1cen <- ulam(
+  alist(
+    C ~ ordered_logistic(phi, kappa),
+    kappa ~ normal(0,1.5),
+    phi <- bLC*sum(delta_j[1:LC]) + a_dist[D] + b_dist[D,U] + bA*A,
+    
+    vector[60]:b_dist[U] ~ multi_normal(0,Rho,sigma),
+    sigma ~ exponential(1),
+    Rho ~ lkj_corr(2),
+    a_dist[D] ~ normal(0,1),
+    
+    c(bA,bLC) ~ normal(0,1),
+    vector[4]:delta_j <<- append_row(0,delta),
+    simplex[3]: delta ~ dirichlet(alpha)
+  ),
+  data=dat1, chains=4,cores=4,log_lik = TRUE
+)
+precis(h14.3.1cen,3)
+```
+
+```{r}
+h14.3.1nc <- ulam(
+  alist(
+    C ~ ordered_logistic(phi, kappa),
+    kappa ~ normal(0,1.5),
+    phi <- bLC*sum(delta_j[1:LC]) + a_dist[D] + b_dist[D,U] + bA*A,
+    
+    transpars> matrix[U,60]:b_dist <- compose_noncentered(sigma,L_Rho,z),
+    matrix[D,U]:z ~ normal(0,1),
+    vector[D]:sigma ~ exponential(1),
+    cholesky_factor_corr[60]:L_Rho ~ lkj_corr_cholesky(2),
+    
+    a_dist[D] ~ normal(0,10),
+    c(bA,bLC) ~ normal(0,10),
+    vector[4]:delta_j <<- append_row(0,delta),
+    simplex[3]: delta ~ dirichlet(alpha),
+    
+    gq> matrix[60,60]:Rho <<- Chol_to_Corr(L_Rho)
+  ),
+  data=dat1, chains=4,cores=4,log_lik = TRUE
+)
+precis(h14.3.1cen,3)
+```
+

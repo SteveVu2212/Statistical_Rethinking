@@ -1,0 +1,629 @@
+---
+title: "Exercise-C11"
+output: github_document
+---
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(rstan)
+library(shape)
+library(tidyr)
+library(dagitty)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+```
+
+```{r}
+rstan_options(auto_write = TRUE)
+```
+
+# 11E1
+
+$$
+Log(\frac{p}{1-p}) = Log(\frac{0.35}{1-0.35}) = -0.62
+$$
+
+# 11E2
+
+$$
+p=\frac{e^{3.2}}{1+e^{3.2}}=0.96
+$$
+# 11E3
+
+$\beta$ represents the changes in log-odd of $p_{i}$ when $x_{i}$ increases one unit.
+
+$$
+logit(p_{i})=\alpha + \beta x_{i}
+$$
+
+# 11E4
+
+The offset is to deal with that the length of observation and the observed counts vary. In the book example, we have observatons of a daily and weekly production of manuscripts. So, we need to add $log(\tau_{i})$ into the model.
+
+# 11M1
+
+No matter how we organize the dataset, as long as the order of the individual observations is irrelevant, the inference information is unchanged.
+
+However, aggregating datapoints makes changes in likelihood distributions. In binomial data, the aggregated probabilities are larger than the disaggregated.
+
+In the Chimpanzees example, Pr(6|9,p)>Pr(1,1,1,1,1,1,0,0,0|p)
+
+# 11M2
+
+The coefficient $\beta$ represents changes in the log expected values of a count outcome.
+
+$$
+Log(\lambda_{i})=\alpha + \beta(x_{i} - \bar x)
+$$
+
+# 11M3
+
+As the main parameter in a binomial generalized linear model is the probability that takes value in range of 0 and 1. The logit link is to map the outcome values of a linear model into the proper range.
+
+# 11M4
+
+A Poisson generalized linear model is to handle count problems which only take positive value. In addition, there is an exponential relationship between predictors and the expected value. The log link is created to set up the constraints.
+
+# 11M5
+
+The Binomial has the largest entropy of any distribution that satisfies two constraints:
+* Only two un-ordered events
+* Constant expected value
+
+The Poisson has maximum entropy among all distributions with the same expected value and independent count events.
+
+While they both need a constraint on the expected values, the Poisson does not limit the number of possible events
+
+# 11M7
+
+```{r}
+data("chimpanzees")
+d <- chimpanzees
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+```
+
+
+```{r}
+dat_list <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  treatment = as.integer(d$treatment)
+)
+```
+
+```{r}
+m11.7a <- ulam(
+  alist(
+    pulled_left ~ dbinom(1,p),
+    logit(p) <- a[actor] + b[treatment],
+    a[actor] ~ dnorm(0, 1.5),
+    b[treatment] ~ dnorm(0,0.5)
+  ),
+  data=dat_list, chains=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+m11.7b <- quap(
+  alist(
+    pulled_left ~ dbinom(1,p),
+    logit(p) <- a[actor] + b[treatment],
+    a[actor] ~ dnorm(0, 1.5),
+    b[treatment] ~ dnorm(0,0.5)
+  ),
+  data=dat_list
+)
+```
+
+
+```{r}
+PSIS(m11.7a, pointwise = TRUE)
+```
+
+
+```{r}
+post.a <- extract.samples(m11.7a)
+post.b <- extract.samples(m11.7b)
+p_left <- inv_logit(post.b$a)
+plot(precis(as.data.frame(p_left)), xlim=c(0,1))
+```
+
+
+
+```{r}
+m11.7c <- ulam(
+  alist(
+    pulled_left ~ dbinom(1,p),
+    logit(p) <- a[actor] + b[treatment],
+    a[actor] ~ dnorm(0, 10),
+    b[treatment] ~ dnorm(0,0.5)
+  ),
+  data=dat_list, chains=4, log_lik=TRUE
+)
+```
+
+```{r}
+m11.7d <- quap(
+  alist(
+    pulled_left ~ dbinom(1,p),
+    logit(p) <- a[actor] + b[treatment],
+    a[actor] ~ dnorm(0, 10),
+    b[treatment] ~ dnorm(0,0.5)
+  ),
+  data=dat_list
+)
+```
+
+
+```{r}
+post.c <- extract.samples(m11.7c)
+post.d <- extract.samples(m11.7d)
+```
+
+
+```{r}
+p_left <- inv_logit(post.d$a)
+plot(precis(as.data.frame(p_left)), xlim=c(0,1))
+```
+```{r}
+precis(m11.7d, 2)
+```
+
+
+Under the prior distribution of the intercept, Normal(0,1.5), there is not significant different in the posterior distribution. However, relaxing the prior results in an increase in variation of actors' decision, especially actor 2. Recall that actor 2 always chose pull_left. The flat prior pushes the prior density towards two extreme values of 0 and 1.
+
+# 11M8
+
+```{r}
+data("Kline")
+d <- Kline
+```
+
+```{r}
+d <- d[!(d$culture == "Hawaii"),]
+```
+
+
+```{r}
+d$P <- scale(log(d$population))
+d$contact_id <- ifelse(d$contact=="high",2,1)
+```
+
+
+```{r}
+dat2 <- list(T=d$total_tools, P=d$population, cid=d$contact_id)
+m11.8 <- ulam(
+  alist(
+    T ~ dpois(lambda),
+    lambda <- exp(a[cid]) * P^b[cid]/g,
+    a[cid] ~ dnorm(1,1),
+    b[cid] ~ dexp(1),
+    g ~ dexp(1)
+  ),
+  data = dat2, chains=4, log_lik = TRUE
+)
+```
+
+
+```{r, fig.height=3, fig.width=3}
+k <- PSIS(m11.8, pointwise = TRUE)$k
+plot(d$population, d$total_tools, xlab="log population (std)",
+     ylab="total tools", col=rangi2, pch=ifelse(dat2$cid==1,1,16),
+     lwd=2, ylim=c(0,75), cex=1+normalize(k), bty="n")
+
+ns <- 100
+P_seq <- seq(from=-5, to=3, length.out=ns)
+pop_seq <- exp(P_seq*1.53 + 9)
+
+lambda <- link(m11.8, data=data.frame(P=pop_seq, cid=1))
+
+lmu <- apply(lambda, 2, mean)
+lci <- apply(lambda, 2, PI)
+lines(pop_seq, lmu, lty=2, lwd=1.5)
+shade(lci, pop_seq, xpd=TRUE)
+
+lambda <- link(m11.8, data=data.frame(P=pop_seq, cid=2))
+lmu <- apply(lambda, 2, mean)
+lci <- apply(lambda, 2, PI)
+lines(pop_seq, lmu, lty=1, lwd=1.5)
+shade(lci, pop_seq, xpd=TRUE)
+```
+Without the influential point of Hawaii, the mean curve of high interaction still lies above the other. However, the PI values are extremely reduced.
+
+# 11H1
+
+```{r}
+data("chimpanzees")
+d <- chimpanzees
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+```
+
+
+```{r}
+dat_list <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  treatment = as.integer(d$treatment)
+)
+```
+
+```{r}
+m11.11a <- ulam(
+  alist(
+    pulled_left ~ dbinom(1,p),
+    logit(p) <- a[actor] + b[treatment],
+    a[actor] ~ dnorm(0, 1.5),
+    b[treatment] ~ dnorm(0,0.5)
+  ),
+  data=dat_list, chains=4, log_lik=TRUE
+)
+```
+
+```{r}
+m11.11b <- ulam(
+  alist(
+    pulled_left ~ dbinom(1,p),
+    logit(p) <- a + b[treatment],
+    a ~ dnorm(0, 1.5),
+    b[treatment] ~ dnorm(0,0.5)
+  ),
+  data=dat_list, chains=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+compare(m11.11a, m11.11b, func=PSIS)
+```
+As expected, the first model that conditions on actors and treatments outperforms the other in terms of predictive power with lower PSIS. The former has more effective parameters than the other, shown by pPSIS. It is reasonable as we add 7 more parameters into the model.
+
+However, the m11.11a has a variation in individual log probabilities twice as high as the other. That fits to the outcome as actor 2 and 7 have strong preference over pull-left than the other actors.
+
+# 11H2
+
+```{r}
+library(MASS)
+data(eagles)
+d <-eagles
+```
+
+
+```{r}
+d$P <- as.integer(d$P)
+d$A <- as.integer(d$A)
+d$V <- as.integer(d$V)
+```
+
+
+```{r}
+dat_list <- with(d, list(
+  n = n,
+  y = y,
+  P = P,
+  A = A,
+  V = V
+))
+```
+
+
+```{r}
+h11.2a <- quap(
+  alist(
+    y ~ dbinom(n, p),
+    logit(p) <- a + bP*P + bV*V + bA*A,
+    a ~ dnorm(0,1.5),
+    c(bP,bV,bA) ~ dnorm(0,0.5)
+  ),
+  data = dat_list
+)
+```
+
+
+```{r}
+precis(h11.2a)
+```
+
+
+```{r}
+h11.2b <- ulam(
+  alist(
+    y ~ dbinom(n, p),
+    logit(p) <- a + bP*P + bV*V + bA*A,
+    a ~ dnorm(0,1.5),
+    c(bP,bV,bA) ~ dnorm(0,0.5)
+  ),
+  data = dat_list, chains=4, cores=4, log_lik = TRUE
+)
+```
+
+
+```{r}
+precis(h11.2b)
+```
+
+
+```{r}
+post <- extract.samples(h11.2b)
+data.frame(post)
+```
+
+
+```{r}
+prob <- link(h11.2b, data=d)
+pmu <- apply(prob, 2, mean)
+pci <- apply(prob, 2, PI)
+```
+
+```{r}
+postcheck(h11.2b)
+```
+
+```{r}
+y <- sim(h11.2b, data=d)
+ymu <- apply(y,2,mean)
+ypi <- apply(y,2,PI)
+```
+
+The first information shows us the probability that each pirate successfully steal food from eagles. The second is a simulation counting the times of success with given trials.
+
+The posterior prediction check shows a chance of improving the model as the expected success of each pirate, open points, are far from the observed data points, except for the first pirate.
+
+```{r}
+h11.2c <- ulam(
+  alist(
+    y ~ dbinom(n, p),
+    logit(p) <- a + bP*P + bV*V + bA*A + bVA*A*V,
+    a ~ dnorm(0,1.5),
+    c(bP,bV,bA,bVA) ~ dnorm(0,0.5)
+  ),
+  data = dat_list, chains=4, cores=4, log_lik = TRUE
+)
+```
+
+
+```{r}
+postcheck(h11.2c)
+```
+
+
+```{r}
+h11.2d <- ulam(
+  alist(
+    y ~ dbinom(n, p),
+    logit(p) <- a + bP*P + bVA*A*V,
+    a ~ dnorm(0,1.5),
+    c(bP,bVA) ~ dnorm(0,0.5)
+  ),
+  data = dat_list, chains=4, cores=4, log_lik = TRUE
+)
+```
+
+
+```{r}
+postcheck(h11.2d)
+```
+
+
+```{r}
+compare(h11.2a, h11.2b, h11.2c, h11.2d, func=WAIC)
+```
+The interaction term has a soft effect on the outcome as the WAIC scores are very close while the deviation is small.
+
+# 11H3
+
+```{r}
+data("salamanders")
+d <- salamanders
+head(d)
+```
+
+```{r}
+precis(d)
+```
+# 11H3
+
+$$
+S_{i} \sim Poisson(\lambda_{i})\\
+log(\lambda_{i}) = \alpha + \beta * P_{i}\\
+\alpha \sim Normal(1,0.5)\\
+\beta \sim Normal(0,0.5)
+$$
+
+```{r}
+dat <- list(
+  S = d$SALAMAN,
+  P = d$PCTCOVER,
+  F = d$FORESTAGE
+)
+```
+
+
+```{r}
+h11.3a <- ulam(
+  alist(
+    S ~ dpois(lambda),
+    log(lambda) <- a + bP*P,
+    a ~ dnorm(1,0.5),
+    bP ~ dnorm(0,0.5)
+  ),
+  data=dat, chains=4,cores=4
+)
+```
+```{r}
+traceplot(h11.3a)
+```
+
+
+```{r}
+P_seq <- seq(from=0,to=100,length.out=100)
+```
+
+```{r}
+prior <- extract.prior(h11.3a)
+mu <- link(h11.3a,prob=prior,data=data.frame(P=P_seq))
+smu <- apply(mu,2,mean)
+spi <- apply(mu,2,PI,prob=0.97)
+```
+
+```{r}
+ssim <- sim(h11.3a, prob=prior, data=list(P=P_seq))
+mu_sim <- apply(ssim,2,mean)
+pi_sim <- apply(ssim,2,PI,prob=0.97)
+```
+
+
+```{r}
+plot(d$SALAMAN ~ d$PCTCOVER)
+lines(P_seq,smu)
+shade(spi, P_seq)
+shade(pi_sim, P_seq)
+```
+
+
+```{r}
+precis(h11.3a)
+```
+
+
+```{r}
+post <- extract.samples(h11.3a)
+mu <- link(h11.3a,prob=post,data=data.frame(P=P_seq))
+smu <- apply(mu,2,mean)
+spi <- apply(mu,2,PI,prob=0.97)
+```
+
+
+```{r}
+ssim <- sim(h11.3a, prob=post, data=list(P=P_seq))
+mu_sim <- apply(ssim,2,mean)
+pi_sim <- apply(ssim,2,PI,prob=0.97)
+```
+
+
+```{r}
+plot(d$SALAMAN ~ d$PCTCOVER)
+lines(P_seq,smu)
+shade(spi, P_seq)
+shade(pi_sim, P_seq)
+```
+
+
+```{r}
+h11.3b <- ulam(
+  alist(
+    S ~ dpois(lambda),
+    log(lambda) <- a + bP*P + bF*F,
+    a ~ dnorm(1,0.5),
+    c(bP,bF) ~ dnorm(0,0.5)
+  ),
+  data=dat, chains=4,cores=4
+)
+```
+
+
+```{r}
+precis(h11.3b)
+```
+```{r}
+h11.3c <- ulam(
+  alist(
+    S ~ dpois(lambda),
+    log(lambda) <- a + bF*F,
+    a ~ dnorm(1,0.5),
+    bF ~ dnorm(0,0.5)
+  ),
+  data=dat, chains=4,cores=4
+)
+```
+
+
+```{r}
+precis(h11.3c)
+```
+```{r}
+dag11.3 <- dagitty("dag{P -> S; P -> A; S -> A}")
+coordinates(dag11.3) <- list(x=c(P=0,A=1,S=2),y=c(P=0,A=1,S=0))
+drawdag(dag11.3)
+```
+The reason why adding Age variable entirely worsens the model is the DAG. Conditioning on F will opens the backdoor path between P and S. *It does not really make sense!!!*
+
+# 11H4
+
+```{r}
+data("NWOGrants")
+d <- NWOGrants
+head(d)
+```
+
+```{r}
+dat_list <- with(d, list(
+  awards = awards,
+  applications = applications,
+  gid = ifelse(gender == "m",1,2)
+))
+```
+
+
+```{r}
+h11.4a <- ulam(
+  alist(
+    awards ~ dbinom(applications, p),
+    logit(p) <- a[gid],
+    a[gid] ~ dnorm(0,1.5)
+),
+data=dat_list, chains=4)
+```
+
+
+```{r}
+post <- extract.samples(h11.4a)
+diff_a <- post$a[,1] - post$a[,2]
+diff_p <- inv_logit(post$a[,1]) - inv_logit(post$a[,2])
+precis(diff_p)
+```
+
+```{r}
+postcheck(h11.4a)
+```
+
+```{r}
+dat_list$dept_id <- rep(1:9, each=2)
+```
+
+
+```{r}
+h11.4b <- ulam(
+  alist(
+    awards ~ dbinom(applications, p),
+    logit(p) <- a[gid] + delta[dept_id],
+    a[gid] ~ dnorm(0,1.5),
+    delta[dept_id] ~ dnorm(0,1.5)
+  ),
+  data=dat_list, chains=4, iter = 4000
+)
+```
+
+
+```{r}
+post <- extract.samples(h11.4b)
+diff_a <- post$a[,1] - post$a[,2]
+diff_p <- inv_logit(post$a[,1]) - inv_logit(post$a[,2])
+precis(list(diff_a=diff_a, diff_p=diff_p))
+```
+
+There are no differences between gender and departments in terms of effects on awards.
+
+```{r}
+```
+

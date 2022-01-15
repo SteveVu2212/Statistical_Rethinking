@@ -1,0 +1,677 @@
+---
+title: "Exercise-C13"
+output: github_document
+---
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(rstan)
+library(shape)
+library(tidyr)
+library(dagitty)
+library(gtools)
+library(tidyverse)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+```
+
+```{r}
+rstan_options(auto_write = TRUE)
+```
+
+# 13E1
+
+(a) is a more informative prior that will shrinks the coefficients much more than the other
+
+# 13E2
+
+$$
+y_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \alpha_{GROUP[i]} + \beta x_{i}\\
+\alpha_{GROUP} ~ Normal(\bar \alpha, \sigma)\\
+\bar \alpha \sim Normal(0,1)\\
+\sigma \sim Exponential(1.5)\\
+\beta \sim Normal(0,0.5)
+$$
+# 13E3
+
+$$
+y_{i} \sim Normal(\mu_{i},\sigma)\\
+\mu_{i} = \alpha_{GROUP[i]} + \beta x_{i}\\
+\alpha_{GROUP} \sim Normal(\bar \alpha, \sigma_{\alpha})\\
+\bar \alpha \sim Normal(0,1)\\
+\sigma_{\alpha} \sim Exponential(5)\\
+\beta \sim Normal(0,1)\\
+\sigma \sim Exponential(1)
+$$
+
+# 13E4
+
+$$
+y_{i} \sim Poisson(p_{i})\\
+logit(p_{i}) = \alpha_{[id]}\\
+\alpha \sim Normal(\bar \alpha, \sigma_{\alpha})\\
+\bar \alpha \sim Normal(0,1)\\
+\sigma_{\alpha} \sim Exponential(1)
+$$
+# 13E5
+
+$$
+y_{i} \sim Poisson(p_{i})\\
+logit(p_{i}) = \alpha_{[id]} + \beta_{[gender]}\\
+\alpha \sim Normal(\bar \alpha, \sigma_{\alpha})\\
+\bar \alpha \sim Normal(0,1)\\
+\beta \sim Normal(\bar \beta, 1)\\
+\bar \beta \sim Normal(0,1)\\
+\sigma_{\alpha} \sim Exponential(1)
+$$
+# 13M1
+
+```{r}
+data("reedfrogs")
+d <- reedfrogs
+d$tank <- 1:nrow(d)
+d$pred.id <- as.integer(d$pred)
+d$size.id <- as.integer(d$size)
+```
+
+
+```{r}
+dat <- with(d, list(
+  S = surv,
+  P = pred.id,
+  SI = size.id,
+  T = tank,
+  N = density
+))
+```
+
+```{r}
+m13.1a <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T] + bP*P + bSI*SI,
+    bT[T] ~ dnorm(bT_bar, bT_sigma),
+    bP ~ dnorm(bP_bar, bP_sigma),
+    bSI ~ dnorm(bSI_bar, bSI_sigma),
+    c(bT_bar, bP_bar, bSI_bar) ~ dnorm(0,1.5),
+    c(bT_sigma, bP_sigma, bSI_sigma) ~ dexp(1)
+  ),
+  data=dat, chains=4, log_lik = TRUE
+)
+```
+
+```{r}
+m13.1b <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T],
+    bT[T] ~ dnorm(bT_bar, bT_sigma),
+    bT_bar ~ dnorm(0,1.5),
+    bT_sigma ~ dexp(1)
+  ),
+  data=dat, chains=4, log_lik = TRUE
+)
+```
+
+
+```{r}
+m13.1c <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T] + bP*P + bSI*SI + bPSI*P*SI,
+    bT[T] ~ dnorm(bT_bar, bT_sigma),
+    bP ~ dnorm(bP_bar, bP_sigma),
+    bSI ~ dnorm(bSI_bar, bSI_sigma),
+    bPSI ~ dnorm(bPSI_bar, bPSI_sigma),
+    c(bT_bar, bP_bar, bSI_bar, bPSI_bar) ~ dnorm(0,1.5),
+    c(bT_sigma, bP_sigma, bSI_sigma, bPSI_sigma) ~ dexp(1)
+  ),
+  data=dat, chains=4, log_lik = TRUE
+)
+```
+
+```{r}
+post.b <- extract.samples(m13.1b)
+d$propsurv.est <- logistic(apply(post.b$bT,2,mean))
+
+plot(d$propsurv, ylim=c(0,1), pch=16, xaxt="n",
+     xlab="tank", ylab="proportion survival", col=rangi2)
+axis(side=1, at=c(1,16,32,48), labels=c(1,16,32,48))
+
+points(d$propsurv.est)
+
+abline(h=mean(inv_logit(post.b$bT_bar)), lty=2)
+
+abline(v=16.5, lwd=0.5)
+abline(v=32.5, lwd=0.5)
+text(x=8,y=0,"small tanks")
+text(x=16+8,y=0,"medium tanks")
+text(x=32+8,y=0,"large tanks")
+```
+
+```{r}
+post.a <- extract.samples(m13.1a)
+
+d$propsurv.est <- logistic(apply(post.a$bT,2,mean) + mean(post.a$bP)*d$pred.id +
+                             mean(post.a$bSI)*d$size.id)
+
+plot(d$propsurv, ylim=c(0,1), pch=16, xaxt="n",
+     xlab="tank", ylab="proportion survival", col=rangi2)
+axis(side=1, at=c(1,16,32,48), labels=c(1,16,32,48))
+
+points(d$propsurv.est)
+
+abline(h=mean(inv_logit(post.a$bT_bar + post.a$bP_bar*d$pred.id + post.a$bSI_bar*d$size.id)), lty=2)
+
+abline(v=16.5, lwd=0.5)
+abline(v=32.5, lwd=0.5)
+text(x=8,y=0,"small tanks")
+text(x=16+8,y=0,"medium tanks")
+text(x=32+8,y=0,"large tanks")
+```
+
+```{r}
+post.c <- extract.samples(m13.1c)
+
+d$propsurv.est <- logistic(apply(post.c$bT,2,mean) + mean(post.c$bP)*d$pred.id +
+                             mean(post.c$bSI)*d$size.id + mean(post.c$bPSI*d$pred.id*d$size.id))
+
+plot(d$propsurv, ylim=c(0,1), pch=16, xaxt="n",
+     xlab="tank", ylab="proportion survival", col=rangi2)
+axis(side=1, at=c(1,16,32,48), labels=c(1,16,32,48))
+
+points(d$propsurv.est)
+
+abline(h=mean(inv_logit(post.c$bT_bar + post.c$bP_bar*d$pred.id + post.c$bSI_bar*d$size.id + post.c$bPSI*d$pred.id*d$size.id)), lty=2)
+
+abline(v=16.5, lwd=0.5)
+abline(v=32.5, lwd=0.5)
+text(x=8,y=0,"small tanks")
+text(x=16+8,y=0,"medium tanks")
+text(x=32+8,y=0,"large tanks")
+```
+Although those three models are very close, there are slight difference in variation across tanks. The third model covering both additional effects and their interactions shows a weak predictive power as the projected points, open points, lie far from the observed even in large tanks. That implies a strong shrinkage in the model. 
+
+# 13M2
+
+```{r}
+compare(m13.1a, m13.1b, m13.1c)
+```
+
+
+```{r}
+plot(NULL, xlim=c(-3,4), ylim=c(0,0.4),
+     xlab="log-odd survive", ylab="density")
+for(i in 1:100){
+  curve(dnorm(x,post.b$bT_bar[i],post.b$bT_sigma[i]), add=TRUE,
+        col=col.alpha("black",0.2))
+}
+dens(log(d$propsurv/(1-d$propsurv)), add=TRUE)
+```
+# 13M3
+
+```{r}
+m13.3 <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T],
+    bT[T] ~ dcauchy(bT_bar, bT_sigma),
+    bT_bar ~ dnorm(0,1),
+    bT_sigma ~ dexp(1)
+  ),
+  data=dat, chains=4,log_lik=TRUE
+)
+```
+
+```{r}
+mu.3 <- link(m13.3, data=dat)
+mu.3.mean <- apply(mu.3,2,mean)
+mu.1 <- link(m13.1b, data=dat)
+mu.1.mean <- apply(mu.1, 2, mean)
+```
+
+
+```{r}
+plot(mu.3.mean ~ mu.1.mean)
+abline(a=0,b=1)
+```
+The posterior means of the intercepts are the same
+
+
+```{r}
+m13.3_PSIS <- PSIS(m13.3, pointwise = TRUE)
+m13.3_WAIC <- WAIC(m13.3, pointwise = TRUE)
+plot(m13.3_WAIC$penalty~m13.3_PSIS$k, xlab="PSIS k value",
+     ylab="WAIC penalty")
+```
+Many k values are higher than the threshold of 0.7, but the traceplot doesn't show a clear sign of inefficent sampling.
+
+```{r}
+traceplot(m13.3)
+```
+
+
+```{r}
+precis(m13.3,2)
+```
+
+
+```{r}
+# Non-centered model
+m13.3nc <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- a_bar + z[T]*sigma_a,
+    z[T] ~ dcauchy(0,1),
+    a_bar ~ dnorm(0,1),
+    sigma_a ~ dcauchy(0,1)
+  ),
+  data=dat, chains=4, cores=4, log_lik = TRUE
+)
+```
+
+# 13M4
+
+```{r}
+m13.4 <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T],
+    bT[T] ~ dstudent(2,b_bar, sigma),
+    b_bar ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data=dat, chains=4,log_lik = TRUE, cores=4
+)
+```
+
+
+```{r}
+compare(m13.4, m13.1b, m13.3)
+```
+
+
+```{r}
+post <- extract.samples(m13.4)
+d$propsurv.est <- logistic(apply(post$bT,2,mean))
+
+plot(d$propsurv, ylim=c(0,1), pch=16, xaxt="n",
+     xlab="tank", ylab="proportion survival", col=rangi2)
+axis(side=1, at=c(1,16,32,48), labels=c(1,16,32,48))
+
+points(d$propsurv.est)
+
+abline(h=mean(inv_logit(post$b_bar)), lty=2)
+
+abline(v=16.5, lwd=0.5)
+abline(v=32.5, lwd=0.5)
+text(x=8,y=0,"small tanks")
+text(x=16+8,y=0,"medium tanks")
+text(x=32+8,y=0,"large tanks")
+```
+
+
+```{r}
+plot(NULL, xlim=c(-3,4), ylim=c(0,0.4),
+     xlab="log-odd survive", ylab="density")
+for(i in 1:100){
+  curve(dnorm(x,post$b_bar[i],post$sigma[i]), add=TRUE,
+        col=col.alpha("black",0.2))
+}
+dens(log(d$propsurv/(1-d$propsurv)), add=TRUE)
+```
+There are no clear difference in shrinkage of intercepts.
+
+# 13M5
+
+```{r}
+data("chimpanzees")
+d <- chimpanzees
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+```
+
+```{r}
+dat <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  block_id = d$block,
+  treatment = as.integer(d$treatment)
+)
+```
+
+
+```{r}
+set.seed(13)
+m13.5a <- ulam(
+  alist(
+    pulled_left ~ dbinom(1,p),
+    logit(p) <- a[actor] + g[block_id] + b[treatment],
+    b[treatment] ~ dnorm(0,0.5),
+    
+    a[actor] ~ dnorm(a_bar, sigma_a),
+    g[block_id] ~ dnorm(0, sigma_g),
+    
+    a_bar ~ dnorm(0,1.5),
+    sigma_a ~ dexp(1),
+    sigma_g ~ dexp(1)
+  ),
+  data=dat, chains=4, cores=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+set.seed(14)
+m13.5b <- ulam(
+  alist(
+    pulled_left ~ dbinom(1,p),
+    logit(p) <- a[actor] + g[block_id] + b[treatment],
+    b[treatment] ~ dnorm(0,0.5),
+    
+    a[actor] ~ dnorm(a_bar, sigma_a),
+    g[block_id] ~ dnorm(g_bar, sigma_g),
+    
+    a_bar ~ dnorm(0,1.5),
+    g_bar ~ dnorm(0,1.5),
+    sigma_a ~ dexp(1),
+    sigma_g ~ dexp(1)
+  ),
+  data=dat, chains=4, cores=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+compare(m13.5a, m13.5b)
+```
+
+
+```{r}
+plot(precis(m13.5b, 2))
+```
+Including g_bar results in a larger variation of blocks and actors
+
+# 13M6
+
+```{r}
+m13.6nn <- ulam(
+  alist(
+    y ~ dnorm(mu,1),
+    mu ~ dnorm(10,1)
+  ),
+  data=list(y=0), chains = 4
+)
+```
+
+```{r}
+m13.6nt <- ulam(
+  alist(
+    y ~ dnorm(mu,1),
+    mu ~ dstudent(2,10,1)
+  ),
+  data=list(y=0), chains = 4
+)
+```
+
+```{r}
+m13.6tn <- ulam(
+  alist(
+    y ~ dstudent(2,mu,1),
+    mu ~ dnorm(10,1)
+  ),
+  data=list(y=0), chains = 4
+)
+```
+
+
+```{r}
+m13.6tt <- ulam(
+  alist(
+    y ~ dstudent(2,mu,1),
+    mu ~ dstudent(2,10,1)
+  ),
+  data=list(y=0), chains = 4
+)
+```
+
+
+```{r}
+post.nn <- extract.samples(m13.6nn)
+post.nt <- extract.samples(m13.6nt)
+post.tn <- extract.samples(m13.6tn)
+post.tt <- extract.samples(m13.6tt)
+```
+
+
+```{r}
+dens(post.nn$mu, xlim=c(-5,15))
+dens(post.nt$mu, add=TRUE, col="red")
+dens(post.tn$mu, add=TRUE, col="blue")
+dens(post.tt$mu, add=TRUE, col="green")
+```
+While the data point is 0, the prior mean is 10. Different choices of prior and likelihood distributions reflect the impact of the observed and the prior.
+* The model NN shows an agreement between them and the posterior distribution mean is 5
+* The model NT is biased toward the data point while the model TN shifts toward the prior
+* The model TT has dual peaks at 0 and 10
+
+All of them is the results of using a thick-tail distribution like Student.
+
+# 13H1
+
+```{r}
+data("bangladesh")
+d <- bangladesh
+```
+
+
+```{r}
+d$district_id <- as.integer(as.factor(d$district))
+```
+
+
+```{r}
+head(d)
+```
+
+
+```{r}
+dat <- list(
+  C = d$use.contraception,
+  D = d$district_id
+)
+```
+
+
+```{r}
+h13.1a <- ulam(
+  alist(
+    C ~ dbinom(1,p),
+    logit(p) <- a[D],
+    a[D] ~ dnorm(0,10)
+  ),
+  data=dat, chains=4,log_lik=TRUE
+)
+```
+
+
+```{r}
+h13.1b <- ulam(
+  alist(
+    C ~ dbinom(1,p),
+    logit(p) <- a[D],
+    a[D] ~ dnorm(a_bar,sigma),
+    a_bar ~ dnorm(0,10),
+    sigma ~ dexp(1)
+  ),
+  data=dat, chains=4,log_lik=TRUE
+)
+```
+
+```{r}
+post.a <- extract.samples(h13.1a)
+post.b <- extract.samples(h13.1b)
+```
+
+```{r}
+plot(NULL, xlim=c(1,60), ylim=c(0,1))
+points(x=1:60, y=(apply(inv_logit(post.a$a),2,mean)))
+points(x=1:60, y=(apply(inv_logit(post.b$a),2,mean)), add=TRUE, col=rangi2)
+```
+
+```{r}
+plot(table(d$district_id))
+```
+The multilevel model's convergence toward the grand mean is better than the fixed-effect model. There are some extreme points that indicate a large gap between these models' predictions. Those points are due to the imbalance of the dataset as those districts lack of observations.
+
+# 13H4
+
+```{r}
+data("reedfrogs")
+d <- reedfrogs
+d$tank <- 1:nrow(d)
+d$pred.id <- as.integer(d$pred)
+d$size.id <- as.integer(d$size)
+```
+
+
+```{r}
+dat <- with(d, list(
+  S = surv,
+  P = pred.id,
+  SI = size.id,
+  T = tank,
+  N = density
+))
+```
+
+```{r}
+h13.4a <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T] + bP*P,
+    bT[T] ~ dnorm(bT_bar, bT_sigma),
+    bP ~ dnorm(bP_bar, bP_sigma),
+    c(bT_bar, bP_bar) ~ dnorm(0,1.5),
+    c(bT_sigma, bP_sigma) ~ dexp(1)
+  ),
+  data=dat, chains=4, log_lik = TRUE
+)
+```
+
+```{r}
+h13.4b <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T] + bSI*SI,
+    bT[T] ~ dnorm(bT_bar, bT_sigma),
+    bSI ~ dnorm(bSI_bar, bSI_sigma),
+    c(bT_bar, bSI_bar) ~ dnorm(0,1.5),
+    c(bT_sigma, bSI_sigma) ~ dexp(1)
+  ),
+  data=dat, chains=4, log_lik = TRUE
+)
+```
+
+
+```{r}
+h13.4c <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T] + bP*P + bSI*SI + bPSI*P*SI,
+    bT[T] ~ dnorm(bT_bar, bT_sigma),
+    bP ~ dnorm(bP_bar, bP_sigma),
+    bSI ~ dnorm(bSI_bar, bSI_sigma),
+    bPSI ~ dnorm(bPSI_bar, bPSI_sigma),
+    c(bT_bar, bP_bar, bSI_bar, bPSI_bar) ~ dnorm(0,1.5),
+    c(bT_sigma, bP_sigma, bSI_sigma, bPSI_sigma) ~ dexp(1)
+  ),
+  data=dat, chains=4, log_lik = TRUE
+)
+```
+
+```{r}
+h13.4d <- ulam(
+  alist(
+    S ~ dbinom(N,p),
+    logit(p) <- bT[T] + bP*P + bSI*SI,
+    bT[T] ~ dnorm(bT_bar, bT_sigma),
+    bP ~ dnorm(bP_bar, bP_sigma),
+    bSI ~ dnorm(bSI_bar, bSI_sigma),
+    c(bT_bar, bP_bar, bSI_bar) ~ dnorm(0,1.5),
+    c(bT_sigma, bP_sigma, bSI_sigma) ~ dexp(1)
+  ),
+  data=dat, chains=4, log_lik = TRUE
+)
+```
+
+
+```{r}
+compare(h13.4a, h13.4b, h13.4c, h13.4d)
+```
+```{r}
+precis(h13.4a)
+```
+
+
+```{r}
+precis(h13.4b)
+```
+
+```{r}
+precis(h13.4c)
+```
+```{r}
+precis(h13.4d)
+```
+
+```{r}
+dag13.4 <- dagitty("dag{T -> S; T -> SI; S -> SI; P -> S}")
+coordinates(dag13.4) <- list(x=c(T=0,S=1,SI=0,P=1),y=c(T=0,S=0,SI=1,P=1))
+drawdag(dag13.4)
+```
+
+
+These models indicate a confounding variable of size while votes for the predation variable. There are difference in survivals among tanks. The inferred causality is the DAG. Conditioning on SI can open the backdoor path, a collider. In other words, Tank and Survive causally impacts Size.
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

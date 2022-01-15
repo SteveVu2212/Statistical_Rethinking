@@ -1,0 +1,514 @@
+---
+title: "Exercise-C7"
+output: github_document
+---
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(rethinking)
+```
+
+# 7E1
+
+Three criteria: CV, PSIS, WAIC
+
+All of them is based on a common measure of log probability. CV leaves out one or a group of samples to test models' out-of-sample predictives. While it is time consuming, PSIS assigns importance levels to observations and those levels follow a Pareto distribution. Both PSIS and WAIC has a penalty term that is called the effective number of parameters.
+
+# 7E2
+
+$$
+H(p) = -\sum p_{i}log(p_{i}) = -(0.7log(0.7)+0.3log(0.3)) = 0.61
+$$
+
+# 7E3
+
+$$
+H(p) = -\sum p_{i}log(p_{i})\\
+= -(0.2log(0.2)+0.25log(0.25)+0.25log(0.25)+0.3log(0.3))\\
+= 1.38
+$$
+
+# 7E4
+$$
+H(p) = -\sum p_{i}log(p_{i})\\
+= -(3*1/3log(1/3))\\
+= 1.1
+$$
+
+# 7M1
+
+$$
+AIC = D_{train} + 2p\\
+WAIC = D_{train} + penalty_term
+$$
+
+WAIC is more general as it makes no assumption of the posterior distribution.
+
+# 7M2
+
+**Model selection** uses criteria to sort out models with the lowest criterion value or highest statistical performance. Thus, we lost the information of differences among the criteria values of different models.
+
+**Model comparison** tries to extract the information of difference between a pool of models.
+
+# 7M3
+
+As PSIS and WAIC are pointwise criteria, we can calculate them for each observations before summing to get the total value for models. Thus, using different datasets fo different models will make such a comparison between models' criteria values less meaningfull.
+
+# 7M4 + 7M5 + 7M6
+
+As the prior becomes more concentrated, the effective number of parameters will decrease. In other words, an informative prior will set a higher requirement for samplers or a strict constraint for parameters. We will revisit it when comparing pooled, unpooled, and partially pooled models.
+
+# 7H1
+
+```{r}
+data("Laffer")
+d <- Laffer
+head(d)
+```
+
+```{r}
+d$std_rate = standardize(d$tax_rate)
+d$std_rev = standardize(d$tax_revenue)
+```
+
+```{r}
+plot(std_rev ~ std_rate, data=d)
+```
+
+
+```{r}
+h7.1.1 <- quap(
+  alist(
+    std_rev ~ dnorm(mu, sigma),
+    mu <- a + b[1]*std_rate +b[2]*std_rate^2,
+    a ~ dnorm(0,1),
+    b ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data=d,start=list(b=rep(0,2))
+)
+```
+
+
+```{r}
+tx_seq = seq(from=min(d$std_rate),to=max(d$std_rate),n=100)
+post <- extract.samples(h7.1.1)
+mu <- link(fit=h7.1.1, data=data.frame(std_rate=tx_seq))
+mu.mean <- apply(mu,2,mean)
+mu.PI <- apply(mu,2,PI,prob=0.89)
+```
+
+```{r}
+s <- sim(fit=h7.1.1, data=list(std_rate=tx_seq))
+rev.mean <- apply(s,2,mean)
+rev.PI <- apply(s,2,PI,prob=0.89)
+```
+
+```{r}
+plot(std_rev ~ std_rate, data=d)
+lines(tx_seq, mu.mean)
+shade(mu.PI, tx_seq)
+shade(rev.PI, tx_seq)
+```
+
+```{r}
+PSIS.h7.1.1 <- PSIS(h7.1.1, pointwise = TRUE)
+WAIC.h7.1.1 <- WAIC(h7.1.1, pointwise=TRUE)
+```
+
+
+```{r}
+plot(PSIS.h7.1.1$k, WAIC.h7.1.1$penalty,
+     xlab="WAIC penalty",ylab="PSIS k value")
+```
+
+```{r}
+h7.1.2 <- quap(
+  alist(
+    std_rev ~ dnorm(mu, sigma),
+    mu <- a + b*std_rate,
+    a ~ dnorm(0,1),
+    b ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data=d)
+```
+
+
+```{r}
+tx_seq = seq(from=min(d$std_rate),to=max(d$std_rate),n=100)
+post <- extract.samples(h7.1.2)
+mu <- link(fit=h7.1.2, data=data.frame(std_rate=tx_seq))
+mu.mean <- apply(mu,2,mean)
+mu.PI <- apply(mu,2,PI,prob=0.89)
+```
+
+```{r}
+s <- sim(fit=h7.1.2, data=list(std_rate=tx_seq))
+rev.mean <- apply(s,2,mean)
+rev.PI <- apply(s,2,PI,prob=0.89)
+```
+
+```{r}
+plot(std_rev ~ std_rate, data=d)
+lines(tx_seq, mu.mean)
+shade(mu.PI, tx_seq)
+shade(rev.PI, tx_seq)
+```
+
+```{r}
+compare(h7.1.1, h7.1.2, func = PSIS)
+```
+
+```{r}
+compare(h7.1.1, h7.1.2, func=WAIC)
+```
+Both PSIS and WAIC points out the outperform of the second model that linearly regress tax revenue on tax rate.
+
+# 7H2
+
+```{r}
+h7.1.3 <- quap(
+  alist(
+    std_rev ~ dstudent(2, mu, sigma),
+    mu <- a + b[1]*std_rate + b[2]*std_rate^2,
+    a ~ dnorm(0,1),
+    b ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data=d,start=list(b=rep(0,2))
+)
+```
+
+
+```{r}
+PSIS.h7.1.3 <- PSIS(h7.1.3, pointwise = TRUE)
+WAIC.h7.1.3 <- WAIC(h7.1.3, pointwise=TRUE)
+```
+
+
+```{r}
+plot(PSIS.h7.1.3$k, WAIC.h7.1.3$penalty,
+     xlab="WAIC penalty",ylab="PSIS k value")
+```
+
+```{r}
+tx_seq = seq(from=min(d$std_rate),to=max(d$std_rate),n=100)
+post <- extract.samples(h7.1.3)
+mu <- link(fit=h7.1.3, data=data.frame(std_rate=tx_seq))
+mu.mean <- apply(mu,2,mean)
+mu.PI <- apply(mu,2,PI,prob=0.89)
+```
+
+```{r}
+s <- sim(fit=h7.1.3, data=list(std_rate=tx_seq))
+rev.mean <- apply(s,2,mean)
+rev.PI <- apply(s,2,PI,prob=0.89)
+```
+
+```{r}
+plot(std_rev ~ std_rate, data=d)
+lines(tx_seq, mu.mean)
+shade(mu.PI, tx_seq)
+shade(rev.PI, tx_seq)
+```
+
+Using a thicker-tail distribution, t-distribution, copes with the criteria values of outliers
+
+# 7H3
+
+```{r}
+entropy <- function(survey){
+  s <-  0
+  for(i in 1:length(survey)){
+    s <- s - survey[i]*log(survey[i])
+  }
+  return(s)
+}
+```
+
+
+```{r}
+I1 <-  c(0.2,0.2,0.2,0.2,0.2)
+I2 <- c(0.8,0.1,0.05,0.025,0.025)
+I3 <- c(0.05,0.15,0.7,0.05,0.05)
+```
+
+```{r}
+s1 <- entropy(I1)
+s2 <- entropy(I2)
+s3 <- entropy(I3)
+```
+
+
+```{r}
+s1; s2; s3
+```
+
+The survey on Island 1 has the highest uncertainty about the bird population
+
+```{r}
+DKL <- function(survey.1, survey.2){
+  d <- 0
+  for(i in 1:length(survey.1)){
+    d <- d - (survey.1[i]*log(survey.1[i]/survey.2[i]))
+  }
+  return(d)
+}
+```
+
+
+```{r}
+div.12 <- DKL(I1,I2)
+div.13 <- DKL(I1,I3)
+div.21 <- DKL(I2,I1)
+div.23 <- DKL(I2,I3)
+div.31 <- DKL(I3,I1)
+div.32 <- DKL(I3,I2)
+```
+
+
+```{r}
+div.12; div.13; div.21; div.23; div.31; div.32
+```
+
+div.23 has the lowest value, which means the bird population in Island 2 is informative to predicting its population in Island 3
+
+# 7H4
+
+```{r}
+d <- sim_happiness( seed=1977 , N_years=1000 )
+d2 <- d[ d$age>17 , ] # only adults
+d2$A <- ( d2$age - 18 ) / ( 65 - 18 )
+d2$mid <- d2$married + 1
+```
+
+
+```{r}
+m6.9 <- quap(
+    alist(
+        happiness ~ dnorm( mu , sigma ),
+        mu <- a[mid] + bA*A,
+        a[mid] ~ dnorm( 0 , 1 ),
+        bA ~ dnorm( 0 , 2 ),
+        sigma ~ dexp(1)
+    ) , data=d2 )
+precis(m6.9,depth=2)
+```
+
+
+```{r}
+m6.10 <- quap(
+    alist(
+        happiness ~ dnorm( mu , sigma ),
+        mu <- a + bA*A,
+        a ~ dnorm( 0 , 1 ),
+        bA ~ dnorm( 0 , 2 ),
+        sigma ~ dexp(1)
+    ) , data=d2)
+precis(m6.10)
+```
+
+```{r}
+compare(m6.9, m6.10, func=PSIS)
+```
+m6.9 is preferred over m6.10 in terms of PSIS and WAIC. However, we previously show that m6.9 suffers from a collider bias as it conditions on the collider, married variable.
+
+# 7H5
+
+```{r}
+data("foxes")
+d <- foxes
+head(d)
+```
+
+
+```{r}
+d$std.area <- standardize(d$area)
+d$std.weight <- standardize(d$weight)
+d$std.avgfood <- standardize(d$avgfood)
+```
+
+
+```{r}
+h7.5 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bA*std.area,
+    a ~ dnorm(4,1),
+    bA ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data=d
+)
+```
+
+
+```{r}
+h7.4 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bF*avgfood,
+    a ~ dnorm(4,1),
+    bF ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+h7.3 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bG*groupsize + bA*std.area,
+    a ~ dnorm(4,1),
+    bG ~ dnorm(4,1),
+    bA ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+h7.2 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bG*groupsize + bAv*std.avgfood,
+    a ~ dnorm(4,1),
+    bG ~ dnorm(4,1),
+    bAv ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+h7.1 <- quap(
+  alist(
+    weight ~ dnorm(mu, sigma),
+    mu <- a + bG*groupsize + bAv*std.avgfood + bA*std.area,
+    a ~ dnorm(4,1),
+    bG ~ dnorm(4,1),
+    bAv ~ dnorm(0,1),
+    bA ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+compare(h7.1,h7.2,h7.3,h7.4,h7.5,func=WAIC)
+```
+
+The comparison supports for the DAG as groupsize and area both impacts weight. The model h7.3 is ranked first. The effect of area is light, making the difference in WAIC scores between the top two model is small. Noticeably, h7.1 has the lowest dSE with h7.3, which implies the relationship between area and avgfood. In other words, knowing area gives us information about avgfood.
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

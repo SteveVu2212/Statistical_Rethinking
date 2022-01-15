@@ -1,0 +1,241 @@
+---
+title: "Exercise-C3"
+output: github_document
+---
+
+```{r}
+rm(list = ls())
+```
+
+```{r}
+library(rethinking)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+p_grid <- seq(from=0, to=1, length.out=1000)
+prior <- rep(x=1, length.out=1000)
+likelihood <- dbinom(x=6, size=9, prob=p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+
+set.seed(1000)
+samples <- sample(x=p_grid, size=1e4, prob=posterior, replace=TRUE)
+```
+
+# 3E1
+```{r}
+sum(posterior[p_grid < 0.2])
+```
+
+```{r}
+sum(samples < 0.2) / 1e4
+```
+
+# 3E2
+```{r}
+sum(samples > 0.8)/1e4
+```
+
+# 3E3
+```{r}
+sum(samples > 0.2 & samples < 0.8) / 1e4
+```
+
+# 3E4
+```{r}
+quantile(samples, 0.2)
+```
+
+# 3E5
+```{r}
+quantile(samples, c(0.2, 0.8))
+```
+
+# 3E6
+```{r}
+HPDI(samples, prob=0.66)
+```
+
+# 3E7
+```{r}
+PI(samples, prob=0.34)
+```
+
+# 3M1
+```{r}
+p_grid <- seq(from=0, to=1, length.out=1000)
+prior <- rep(x=1, length.out=1000)
+likelihood <- dbinom(x=8, size=15, prob=p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+
+```
+
+# 3M2
+
+```{r}
+set.seed(1000)
+samples <- sample(x=p_grid, size=1e4, prob=posterior, replace=TRUE)
+```
+
+```{r}
+dens(samples)
+```
+
+```{r}
+HPDI(samples, prob=0.9)
+```
+
+# 3M3
+```{r}
+mean(samples)
+```
+
+# 3M4
+```{r}
+dbinom(x=6,size=9, prob = 0.53)
+```
+
+# 3M5
+```{r}
+p_grid <- seq(from=0, to=1, length.out=1000)
+prior <- ifelse(p_grid < 0.5, 0, 1)
+likelihood <- dbinom(x=8, size=15, prob=p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+```
+
+```{r}
+samples <- sample(x=p_grid, size=1e4, prob=posterior, replace=TRUE)
+```
+
+```{r}
+HPDI(samples, prob = 0.9)
+```
+
+
+```{r}
+dbinom(x=8,size = 15,prob = mean(samples))
+```
+
+
+```{r}
+mean(samples)
+```
+
+# 3M6
+```{r}
+PI(samples, prob=0.01)
+```
+
+
+```{r}
+birth1 <- c(1,0,0,0,1,1,0,1,0,1,0,0,1,1,0,1,1,0,0,0,1,0,0,0,1,0,
+0,0,0,1,1,1,0,1,0,1,1,1,0,1,0,1,1,0,1,0,0,1,1,0,1,0,0,0,0,0,0,0,
+1,1,0,1,0,0,1,0,0,0,1,0,0,1,1,1,1,0,1,0,1,1,1,1,1,0,0,1,0,1,1,0,
+1,0,1,1,1,0,1,1,1,1)
+birth2 <- c(0,1,0,1,0,1,1,1,0,0,1,1,1,1,1,0,0,1,1,1,0,0,1,1,1,0,
+1,1,1,0,1,1,1,0,1,0,0,1,1,1,1,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,
+1,1,1,0,1,1,0,1,1,0,1,1,1,0,0,0,0,0,0,1,0,0,0,1,1,0,0,1,0,0,1,1,
+0,0,0,1,1,1,0,0,0,0)
+```
+
+
+```{r}
+library(rethinking)
+data(homeworkch3)
+```
+
+
+```{r}
+sum(birth1) + sum(birth2); length(birth1) + length(birth2)
+```
+
+# 3H1
+```{r}
+p_grid <- seq(from=0, to=1, length.out=1000)
+prior <- rep(1, 1000)
+likelihood <- dbinom(x=sum(birth1) + sum(birth2), size=length(birth1) + length(birth2), prob=p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+```
+
+
+```{r}
+p_grid[which.max(posterior)]
+```
+
+# 3H2
+```{r}
+samples <- sample(x=p_grid, size=1e4, prob = posterior, replace = TRUE)
+```
+
+
+```{r}
+HPDI(samples, 0.5)
+```
+
+
+```{r}
+HPDI(samples, 0.89)
+```
+
+
+```{r}
+HPDI(samples, 0.97)
+```
+
+# 3H3
+```{r}
+w <- rbinom(n=1e4, size=200, prob = samples)
+```
+
+
+```{r}
+dens(w)
+```
+
+# 3H4
+```{r}
+p_grid <- seq(from=0, to=1, length.out=1000)
+prior <- rep(1, 1000)
+likelihood <- dbinom(x=sum(birth1), size=length(birth1), prob=p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+```
+
+```{r}
+samples <- sample(x=p_grid, size=length(birth1), prob = posterior, replace = TRUE)
+dens(samples)
+```
+```{r}
+mean(samples); median(samples)
+```
+
+
+# 3H5
+```{r}
+p_grid <- seq(from=0, to=1, length.out=1000)
+prior <- rep(1, 1000)
+likelihood <- dbinom(x=sum(birth2), size=length(birth2), prob=p_grid)
+posterior <- likelihood*prior
+posterior <- posterior/sum(posterior)
+```
+
+
+```{r}
+samples <- sample(x=p_grid, size=length(birth2), prob = posterior, replace = TRUE)
+```
+
+```{r}
+dens(samples)
+```
+```{r}
+mean(samples); median(samples)
+```
+

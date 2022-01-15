@@ -1,0 +1,536 @@
+---
+title: "Exercise-C12"
+output: github_document
+---
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(rstan)
+library(shape)
+library(tidyr)
+library(dagitty)
+library(gtools)
+library(tidyverse)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+```
+
+```{r}
+rstan_options(auto_write = TRUE)
+```
+
+# 12E1
+
+Ordered categorical variables are discrete variables whose values indicate different ordered levels along some dimension.
+
+For example, the ordered predictor variables state education levels in the example in the chapter, from primary schools to master's degree.
+
+# 12E2
+
+$$
+log(\frac{Pr(p \leq k)}{1-Pr(p \leq k)}) = \alpha_{k} - \phi_{i}
+$$
+The link function is a cummulative link function with the probability is the probability of a response value equal to or less than k.
+
+# 12E3
+
+In count problems, any zero can come from different processes. Ignoring such a zero-inflation issue can generate over-dispersion. For example, in the example of monastery producing manuscripts, the number of days without producing any manuscripts depends on the productivity and the show.
+
+# 12E4
+
+Example of over-dispersion: Overdispersion can be caused by outliers. For example, in test scores, gifted students can have positive effects on their classmates in compared with other students in other classes.
+
+Example of under-dispersion: Underdispersion occurs when their is less variation in the data than the expectation. It can be due to autocorrelation between subgroups of variables. In the example of zero-inflation, if we ignore the zeros, it will exhibit a pattern of underdispersion.
+
+# 12M1 + 12M2
+
+```{r}
+num_rating <- c(12,36,7,41)
+cum_rating <- cumsum(num_rating)
+cum_pr <- cum_rating/sum(num_rating)
+logit <- function(x){log(x/(1-x))}
+round(lco <- logit(cum_pr),2)
+```
+
+
+```{r}
+plot(x=seq(4), y=cum_pr, type="b", xlab="response",
+     ylab="cumulative proportion", ylim=c(0,1))
+```
+# 12M3
+
+Zero-inflated Poisson distribution (ZIPoisson)
+$$
+y_{i} \sim ZIPoisson(p_{i},\lambda_{i})\\
+logit(p_{i}) = \alpha_{p} + \beta_{p}x_{i}\\
+log(\lambda_{i}) = \alpha_{\lambda} + \beta_{\lambda}x_{i}
+$$
+
+$$
+A_{i} \sim Binomial(N_{i},p_{i}, \lambda_{i})\\
+logit(p_{i}) = \alpha_{GID[p_{i}]}\\
+log(\lambda_{i}) = \alpha_{GID[\lambda_{i}]}
+$$
+
+# 12H1
+
+```{r}
+data("Hurricanes")
+d <- Hurricanes
+head(d)
+```
+
+
+```{r}
+precis(d$deaths)
+```
+
+
+```{r}
+dat <- list(
+  D = d$deaths,
+  F = d$femininity
+)
+```
+
+
+```{r}
+h12.1 <- ulam(
+  alist(
+    D ~ dpois(lambda),
+    log(lambda) <- a,
+    a ~ dnorm(0,10)
+  ),
+  data=dat, chains=4, log_lik=TRUE
+)
+```
+
+```{r}
+precis(h12.1)
+```
+
+
+```{r}
+h12.1b <- ulam(
+  alist(
+    D ~ dpois(lambda),
+    log(lambda) <- a + b*F,
+    a ~ dnorm(0,10),
+    b ~ dnorm(0,10)
+  ),
+  data=dat, chains=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+precis(h12.1b)
+```
+
+
+```{r}
+compare(h12.1, h12.1b, func=PSIS)
+```
+
+```{r}
+plot(compare(h12.1, h12.1b))
+```
+
+The second model has better predictive power than the other, but the different is modest as the deviation of PSIS score between two models is not too large in compared with their PSIS scores.
+
+The association of femininity of name and deaths is positive but weak
+
+```{r}
+postcheck(h12.1b)
+```
+
+
+```{r}
+post <- extract.samples(h12.1b)
+fem_seq <- seq(1,11,0.1)
+```
+
+```{r}
+mu <- link(fit=h12.1b,data=data.frame(F=fem_seq))
+mu.mean <- apply(mu,2,mean)
+mu.pi <- apply(mu,2,PI,prob=0.97)
+```
+
+```{r}
+s <- sim(fit=h12.1b,data=data.frame(F=fem_seq))
+s.mu <- apply(s,2,mean)
+s.pi <- apply(s,2,PI,prob=0.97)
+```
+
+
+```{r}
+plot(d$deaths ~ d$femininity)
+lines(fem_seq,mu.mean)
+shade(s.pi, fem_seq)
+```
+
+The model fits well to storms with deaths below 50 while doing poor jobs on damaged hurricanes
+
+# 12H2
+
+```{r}
+h12.2 <- ulam(
+  alist(
+    D ~ dgampois(lambda, phi),
+    log(lambda) <- a + b*F,
+    a ~ dnorm(0,10),
+    b ~ dnorm(0,10),
+    phi ~ dexp(1)
+  ),
+  data=dat, chains=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+precis(h12.2)
+```
+```{r}
+postcheck(h12.2)
+```
+
+
+```{r}
+post <- extract.samples(h12.2)
+fem_seq <- seq(1,11,0.1)
+mu <- link(fit=h12.2, prob=post,data=data.frame(F=fem_seq))
+mu.mean <- apply(mu,2,mean)
+mu.pi <- apply(mu,2,PI,prob=0.97)
+```
+
+```{r}
+s <- sim(fit=h12.2,data=data.frame(F=fem_seq))
+s.mu <- apply(s,2,mean)
+s.pi <- apply(s,2,PI,prob=0.97)
+```
+
+
+```{r}
+plot(d$deaths ~ d$femininity)
+lines(fem_seq, mu.mean)
+shade(mu.pi, fem_seq)
+shade(s.pi, fem_seq)
+```
+The association between femininity of name and deaths dropped significantly. This is because there are other sources of dispersion instead of the name
+
+# 12H3
+
+```{r}
+
+data("Hurricanes")
+d <- Hurricanes
+
+dat2 <- list(
+  D = d$deaths,
+  DA = (d$damage_norm - mean(d$damage_norm))/sd(d$damage_norm),
+  F = (d$femininity - mean(d$femininity))/sd(d$femininity),
+  P = (d$min_pressure - mean(d$min_pressure))/sd(d$min_pressure)
+)
+```
+
+
+```{r}
+h12.3a <- ulam(
+  alist(
+    D ~ dpois(lambda),
+    log(lambda) <- a + bF*F + bDA*DA + bP*P,
+    a ~ dnorm(0,10),
+    c(bF,bDA,bP) ~ dnorm(0,2)
+  ),
+  data=dat2, chains=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+h12.3b <- ulam(
+  alist(
+    D ~ dpois(lambda),
+    log(lambda) <- a + bFP*F*P + bDA*DA,
+    a ~ dnorm(0,10),
+    c(bFP,bDA) ~ dnorm(0,2)
+  ),
+  data=dat2, chains=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+h12.3c <- ulam(
+  alist(
+    D ~ dpois(lambda),
+    log(lambda) <- a + bFDA*F*DA + bP*P,
+    a ~ dnorm(0,10),
+    c(bFDA,bP) ~ dnorm(0,2)
+  ),
+  data=dat2, chains=4, log_lik=TRUE
+)
+```
+
+
+```{r}
+compare(h12.3a, h12.3b, h12.3c)
+```
+Adding interaction does not help to explain the cause of seriouness of hurricanes.
+
+```{r}
+precis(h12.3a)
+```
+The model with the best predictive power illustrates the negative association between min_pressure with hurrianes. Notably, the coefficient of femininity of names increased critically. There can be due to a backdoor path being opened.
+
+Following the DAG below, conditioning on DA can open the door between F and D.
+
+```{r}
+dag12.3 <- dagitty("dag{P -> D; D -> DA; F -> DA}")
+coordinates(dag12.3) <- list(x=c(P=0,D=1,DA=2,F=3),y=c(P=0,D=0,DA=0,F=0))
+drawdag(dag12.3)
+```
+
+# 12H4
+
+```{r}
+
+data("Hurricanes")
+d <- Hurricanes
+
+dat2 <- list(
+  D = d$deaths,
+  DA = (log(d$damage_norm) - mean(log(d$damage_norm)))/sd(log(d$damage_norm)),
+  F = (d$femininity - mean(d$femininity))/sd(d$femininity),
+  P = (d$min_pressure - mean(d$min_pressure))/sd(d$min_pressure)
+)
+```
+
+
+```{r}
+h12.4 <- ulam(
+  alist(
+    D ~ dpois(lambda),
+    log(lambda) <- a + bF*F + bDA*DA + bP*P,
+    a ~ dnorm(0,10),
+    c(bF,bDA,bP) ~ dnorm(0,2)
+  ),
+  data=dat2, chains=4, log_lik=TRUE
+)
+```
+
+```{r}
+precis(h12.4)
+```
+
+Use log(damage_norm) makes the association between min_pressure and deaths disappear.
+
+```{r}
+compare(h12.4, h12.3a)
+```
+The model with log(damage_norm) also outperforms the h12.3a in terms of predictive power.
+
+# 12H5
+
+```{r}
+data("Trolley")
+d <- Trolley
+head(d)
+```
+
+
+```{r}
+d %>% 
+  filter(contact==1) %>%
+  ggplot(aes(x=as.factor(response),group=as.factor(male),
+             fill=as.factor(male))) +
+  geom_bar(aes(y=..prop..), position="dodge") +
+  ggtitle("Probability of response filled by gender and contact")
+```
+
+Female students chose responses #2,3 and 4 more than the male who favors responses #6 and #7.
+
+```{r}
+dat3 <- list(
+  R=d$response,
+  A = d$action,
+  I = d$intention,
+  C = d$contact,
+  M = d$male)
+```
+
+
+```{r}
+h12.5 <- ulam(
+  alist(
+    R ~ dordlogit(phi, cutpoints),
+    phi <- bA*A + bC*C + BI*I + bF*(1-M) + bFC*(1-M)*C,
+    BI <- bI + bIA*A + bIC*C,
+    c(bA,bI,bIA,bIC,bC,bF,bFC) ~ dnorm(0,0.5),
+    cutpoints ~ dnorm(0,1.5)
+  ),
+  data=dat3, chains=4, cores=4
+)
+```
+
+
+```{r}
+precis(h12.5)
+```
+
+# 12H7
+
+```{r}
+dag12.7 <- dagitty("dag{E -> R; A -> E; A -> R}")
+coordinates(dag12.7) <- list(x=c(E=0,A=1,R=2),y=c(E=0,A=1,R=0))
+drawdag(dag12.7)
+```
+
+
+```{r}
+data("Trolley")
+d <- Trolley
+
+edu_levels <- c( 6 , 1 , 8 , 4 , 7 , 2 , 5 , 3 )
+d$edu_new <- edu_levels[d$edu]
+```
+
+```{r}
+delta <- rdirichlet(10, alpha=rep(2,7))
+```
+
+```{r}
+dat4 <- list(
+  R = d$response,
+  age = d$age,
+  E = as.integer(d$edu_new),
+  alpha = rep(2,7)
+)
+```
+
+
+```{r}
+h12.7 <- ulam(
+  alist(
+    R ~ ordered_logistic(phi, kappa),
+    phi <- bE*sum(delta_j[1:E]) + bA*age,
+    kappa ~ normal(0,1.5),
+    c(bA, bE) ~ normal(0,1),
+    vector[8]: delta_j <<- append_row(0, delta),
+    simplex[7]: delta ~ dirichlet(alpha)
+  ),
+  data=dat4, chains=4, cores=4
+)
+```
+
+
+```{r}
+precis(h12.7, depth=2, omit="kappa")
+```
+
+The model's outcome shows insignificant impacts of education and ages on responses.
+
+# 12H8
+
+```{r}
+dag12.8 <- dagitty("dag{E -> R; A -> E; A -> R; G -> E; G -> R}")
+coordinates(dag12.8) <- list(x=c(E=0,A=1,R=2,G=1),y=c(E=0,A=1,R=0,G=-1))
+drawdag(dag12.8)
+```
+
+```{r}
+data("Trolley")
+d <- Trolley
+
+edu_levels <- c( 6 , 1 , 8 , 4 , 7 , 2 , 5 , 3 )
+d$edu_new <- edu_levels[d$edu]
+```
+
+```{r}
+delta <- rdirichlet(10, alpha=rep(2,7))
+```
+
+```{r}
+head(d)
+```
+
+
+```{r}
+dat5 <- list(
+  R = d$response,
+  A = d$age,
+  G = d$male,
+  E = as.integer(d$edu_new),
+  alpha = rep(2,7)
+)
+```
+
+
+```{r}
+h12.8 <- ulam(
+  alist(
+    R ~ ordered_logistic(phi, kappa),
+    phi <- bE*sum(delta_j[1:E]) + bA*A + bG*G,
+    kappa ~ normal(0,1.5),
+    c(bA, bE, bG) ~ normal(0,1),
+    vector[8]: delta_j <<- append_row(0, delta),
+    simplex[7]: delta ~ dirichlet(alpha)
+  ),
+  data=dat5, chains=4, cores=4
+)
+```
+
+```{r}
+precis(h12.8, depth=2, omit="kappa")
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

@@ -1,0 +1,777 @@
+---
+title: "Exercise-C15"
+output: github_document
+---
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(MASS)
+library(rstan)
+library(shape)
+library(tidyr)
+library(dagitty)
+library(gtools)
+library(ellipse)
+library(tidyverse)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+# 15E1
+
+The generative model
+$$
+T_{i} \sim Poisson(\mu_{i})\\
+log(\mu_{i}) = \alpha + \beta log(P_{TRUE,i})\\
+log(P_{OBS,i}) \sim Normal(log(P_{TRUE,i}), \sigma)\\
+log(P_{TRUE,i}) \sim Normal(0,1)\\
+\alpha \sim Normal(0,1.5)\\
+\beta \sim Normal(0,1)\\
+\sigma \sim Exponential(1)
+$$
+
+# 15E2
+
+The generative model
+$$
+T_{i} \sim Poisson(\mu_{i})\\
+log(\mu_{i}) = \alpha + \beta log(P_{i})\\
+log(P_{i}) \sim Normal(\nu, \sigma)\\
+\nu \sim Normal(0,1)\\
+\sigma \sim Exponential(1)\\
+\alpha \sim Normal(0,1.5)\\
+\beta \sim Normal(0,1)
+$$
+
+# 15M1
+
+The assumption is that any generative model necessarily contains information about variables that have not been observed.
+
+Each missing value is assigned a unique parameter. The observed values give us information about the distribution of the values. This distribution becomes a prior for the missing values. The prior will be updated by full model. Thus, there will be a posterior distribution for each missing value.
+
+# 15M2
+
+```{r}
+data("milk")
+d <- milk
+d$neocortex.prop <- d$neocortex.perc/100
+d$logmass <- log(d$mass)
+```
+
+
+```{r}
+dat_list <- list(
+  K = standardize(d$kcal.per.g),
+  B = d$neocortex.prop,
+  M = standardize(d$logmass)
+)
+```
+
+```{r}
+dat_list$B
+```
+
+
+$$
+K_{i} \sim Normal(\mu_{i},\sigma)\\
+\mu_{i} = \alpha + \beta_{B}B_{i} + \beta_{M}log(M_{i})\\
+B_{i} \sim Beta(\nu, \sigma_{B})\\
+\alpha \sim Normal(0,0.5)\\
+\beta_{B} \sim Normal(0,0.5)\\
+\beta_{M} \sim Normal(0,0.5)\\
+\sigma \sim Exponential(1)\\
+\nu \sim HalfNormal(0.5,1)\\
+\sigma_{B} \sim Exponential(1)
+$$
+
+```{r}
+# m15.2 <- ulam(
+#   alist(
+#     K ~ normal(mu, sigma),
+#     mu <- a + bB*B + bM*M,
+#     B ~ beta(nu, sigma_B),
+#     a ~ normal(0,0.5),
+#     nu ~ half_normal(0,0.5),
+#     c(bB,bM) ~ normal(0,0.5),
+#     sigma_B ~ exponential(1),
+#     sigma ~ exponential(1)
+#   ),
+#   data=dat_list, chains=4, log_lik = TRUE
+# )
+# precis(m15.2, depth=2)
+```
+
+# 15M3
+
+```{r}
+data("WaffleDivorce")
+d <- WaffleDivorce
+```
+
+$$
+D_{OBS,i} \sim Normal(D_{TRUE,i},D_{SE,i})\\
+D_{TRUE,i} \sim Normal(\mu_{i},\sigma)\\
+\mu_{i} = \alpha + \beta_{A}A_{i} + \beta_{M}M_{i}\\
+\alpha \sim Normal(0,0.2)\\
+\beta_{A} \sim Normal(0,0.5)\\
+\beta_{M} \sim Normal(0,0.5)\\
+\sigma \sim Exponential(1)
+$$
+
+```{r}
+dlist <- list(
+  D_obs = standardize(d$Divorce),
+  D_sd = 2*d$Divorce.SE/sd(d$Divorce), #double standard errors of D
+  M = standardize(d$Marriage),
+  A = standardize(d$MedianAgeMarriage),
+  N = nrow(d)
+)
+```
+
+```{r}
+plot(d$Divorce ~ d$MedianAgeMarriage, ylim=c(4,15),
+     xlab="Median age marriage", ylab="Divorce rate")
+
+for(i in 1:nrow(d)){
+  ci <- d$Divorce[i] + 2*c(-1,1)*d$Divorce.SE[i]
+  x <- d$MedianAgeMarriage[i]
+  lines(c(x,x),ci)
+}
+```
+
+```{r}
+m15.3 <- ulam(
+  alist(
+    D_obs ~ normal(D_true, D_sd), #known standard deviation
+    vector[N]:D_true ~ normal(mu, sigma),
+    mu <- a + bA*A + bM*M,
+    a ~ normal(0,0.2),
+    bA ~ normal(0,0.5),
+    bM ~ normal(0,0.5),
+    sigma ~ exponential(1)
+  ),
+  data=dlist, chains=4, cores=4, log_lik = TRUE
+)
+precis(m15.3, depth=2)
+```
+
+```{r}
+dlist2 <- list(
+  D_obs = standardize(d$Divorce),
+  D_sd = d$Divorce.SE/sd(d$Divorce), #double standard errors of D
+  M = standardize(d$Marriage),
+  A = standardize(d$MedianAgeMarriage),
+  N = nrow(d)
+)
+```
+
+```{r}
+m15.3x <- ulam(flist=m15.3, data=dlist2, chains=4, cores=4)
+precis(m15.3x, 2)
+```
+
+
+```{r}
+plot(y=precis(m15.3, depth=2)$n_eff,x=precis(m15.3x, depth=2)$n_eff,
+     xlab= "n_eff with original standard deviation",
+     ylab = "n_eff with doubled standard deviation")
+abline(a=0,b=1)
+```
+Doubling standard deviation annihilates the inference as the number of efficient parameters significantly dropped off. So, as the noise gets so extreme, the inference can not extract information from observed data.
+
+# 15M4
+
+```{r}
+N <- 100
+X <- rnorm(N,mean=0,sd=1)
+Y <- rnorm(N,mean=X,sd=1)
+Z <- rnorm(N,mean=Y,sd=1)
+```
+
+
+```{r}
+m15.4a <- ulam(
+  alist(
+    Y ~ normal(mu, sigma),
+    mu <- a + bX*X + bZ*Z,
+    a ~ normal(0,1),
+    c(bX,bZ) ~ normal(0,1),
+    sigma ~ exponential(1)
+  ),
+  data=list(X=X,Y=Y,Z=Z), chains=4, log_lik=TRUE
+)
+precis(m15.4a)
+```
+
+
+```{r}
+m15.4b <- ulam(
+  alist(
+    Z ~ normal(mu, sigma),
+    mu <- a + bX*X + bY*Y,
+    a ~ normal(0,1),
+    c(bX, bY) ~ normal(0,1),
+    sigma ~ exponential(1)
+  ),
+  data=list(X=X,Y=Y,Z=Z), chains=4, log_lik=TRUE
+)
+precis(m15.4b)
+```
+
+
+```{r}
+m15.4c <- ulam(
+  alist(
+    X ~ normal(mu, sigma),
+    mu <- a + bZ*Z + bY*Y,
+    a ~ normal(0,1),
+    c(bZ, bY) ~ normal(0,1),
+    sigma ~ exponential(1)
+  ),
+  data=list(X=X,Y=Y,Z=Z), chains=4, log_lik=TRUE
+)
+precis(m15.4c)
+```
+Three notes:
+* m15.4b confirms that given information of Y, learning X don't give additional information about Z
+* m15.4a says that learning X and Z give information about Y
+* m15.4c reconstructs the information from Y about X while Z states nothing
+
+# 15M5
+
+The generative model
+
+$$
+N_{i} \sim Poisson(\lambda_{i})\\
+log \lambda_{i} = \alpha + \beta C_{i}\\
+C_{i} \sim Bernoulli(k)\\
+R_{C,i} \sim Bernoulli(r)
+$$
+
+```{r}
+set.seed(9)
+N_houses <- 100L
+alpha <- 5
+beta <- (-3)
+k <- 0.5
+r <- 0.2
+
+cat <- rbern(n=N_houses, prob=k)
+notes <- rpois(n=N_houses, lambda = alpha + beta*cat)
+R_C <- rbern(n=N_houses, prob=r)
+cat_obs <- cat
+cat_obs[R_C==1] <- (-9L)
+```
+
+
+```{r}
+dat <- list(
+  notes = notes,
+  cat = cat_obs, #missing observations of cat. Yes or No
+  RC = R_C,
+  N = as.integer(N_houses)
+)
+```
+
+```{r}
+m15.5a <- ulam(
+  alist(
+    # Have observations of cat. Just ordinary Poisson probability
+    notes|RC==0 ~ poisson(lambda),
+    log(lambda) <- a + b*cat,
+    
+    # Miss information of cat. Compute the average likelihood
+    notes|RC==1 ~ custom(log_sum_exp(
+      log(k) + poisson_lpmf(notes|exp(a+b)),
+      log(1-k) + poisson_lpmf(notes|exp(a))
+    )),
+    
+    a ~ normal(0,1),
+    b ~ normal(0,0.5),
+    
+    # Non-missing observation inform the prior k for the misisng observations
+    cat|RC==0 ~ bernoulli(k),
+    k ~ beta(2,2),
+    
+    gp> vector[N]:PrC1 <- exp(lpC1)/(exp(lpC1)+exp(lpC0)),
+    gp> vector[N]:lpC1 <- log(k) + poisson_lpmf(notes[i]|exp(a+b)),
+    gp> vector[N]:lpC0 <- log(1-k) + poisson_lmpf(notes[i]|exp(a))
+    
+  ),
+  data=dat, chains=4, cores=4
+)
+precis(m15.5a)
+```
+
+# 15M6
+
+```{r}
+# (a): MCAR
+
+N <- 100
+S <- rnorm(N)
+H <- rbinom(n=N, size=10, prob=inv_logit(S))
+D <- rbernoulli(N)
+Hm <- H
+Hm[D==1] <- NA
+```
+
+```{r}
+dlista <- list(H=H[D==0], S=S[D==0])
+
+m15.6a <- ulam(
+  alist(
+    H ~ binomial(10,p),
+    logit(p) <- a + bS*S,
+    a ~ normal(0,1),
+    bS ~ normal(0,0.5)
+  ),
+  data=dlista, chains=4, cores=4
+)
+precis(m15.6a)
+```
+
+
+```{r}
+# (b): MAR
+N <- 100
+S <- rnorm(N)
+H <- rbinom(n=N, size=10, prob=inv_logit(S))
+D <- ifelse(S>0,1,0) # S influence D
+Hm <- H
+Hm[D==1] <- NA
+```
+
+```{r}
+dlistb <- list(H=H[D==0], S=S[D==0])
+
+m15.6b <- ulam(
+  alist(
+    H ~ binomial(10,p),
+    logit(p) <- a + bS*S,
+    a ~ normal(0,1),
+    bS ~ normal(0,0.5)
+  ),
+  data=dlistb, chains=4, cores=4
+)
+precis(m15.6b)
+```
+
+
+```{r}
+# (c): MAR
+set.seed(501)
+N <- 1000
+X <- rnorm(N)
+S <- rnorm(N)
+H <- rbinom(n=N, size=10, prob=inv_logit(2 + S - 2*X))
+D <- ifelse(X>1,1,0) # X influences H and D
+Hm <- H
+Hm[D==1] <- NA
+```
+
+```{r}
+dlistc <- list(H=H[D==0], S=S[D==0])
+
+m15.6c <- ulam(
+  alist(
+    H ~ binomial(10,p),
+    logit(p) <- a + bS*S,
+    a ~ normal(0,1),
+    bS ~ normal(0,0.5)
+  ),
+  data=dlistc, chains=4, cores=4
+)
+precis(m15.6c)
+```
+
+
+```{r}
+# (d): MNAR
+N <- 100
+S <- rnorm(N)
+H <- rbinom(N,size=10,prob=inv_logit(S))
+D <- ifelse(H<5,1,0) # H influences D
+Hm <- H
+Hm[D==1] <- NA
+```
+
+
+```{r}
+dlistd <- list(H=H[D==0], S=S[D==0])
+
+m15.6d <- ulam(
+  alist(
+    H ~ binomial(10,p),
+    logit(p) <- a + bS*S,
+    a ~ normal(0,1),
+    bS ~ normal(0,0.5)
+  ),
+  data=dlistd, chains=4, cores=4
+)
+precis(m15.6d)
+```
+
+The outcomes do not match with the theory as the fourth model is not supposed to work well. The second and third models reflect the omitted variable bias while the first model performs well.
+
+# 15H1
+
+```{r}
+data("elephants")
+d <- elephants
+precis(d)
+```
+
+
+```{r}
+h15.1a <- ulam(
+  alist(
+    MATINGS ~ poisson(lambda),
+    log(lambda) <- a + bA*AGE,
+    a ~ normal(0,1),
+    bA ~ normal(0,1)
+  ),
+  data=d, chains=4
+)
+precis(h15.1a)
+```
+
+
+```{r}
+h15.1b <- ulam(
+  alist(
+    MATINGS ~ poisson(lambda),
+    log(lambda) <- a + bA*AGE_true,
+    AGE ~ normal(AGE_true,5),
+    AGE_true ~ normal(20,5),
+    a ~ normal(0,1),
+    bA ~ normal(0,1)
+  ),
+  data=d, chains=4
+)
+precis(h15.1b,2)
+```
+Both models agree on a mild influence of AGE on MATING
+
+The posterior mean of bA is already close to zero
+
+# 15H3
+
+
+```{r}
+set.seed(100)
+x <- c( rnorm(10) , NA )
+y <- c( rnorm(10,x) , 100 )
+d <- list(x=x,y=y)
+d
+```
+
+
+```{r}
+h15.3a <- ulam(
+  alist(
+    y ~ normal(mu, sigma),
+    mu <- a + b*x,
+    x ~ normal(0,1),
+    c(a,b) ~ normal(0,100),
+    sigma ~ exponential(1)
+  ),
+  data=d, chains=4, cores=4
+)
+precis(h15.3a,2)
+```
+
+
+```{r}
+h15.3b <- ulam(
+  alist(
+    y ~ normal(mu, sigma),
+    mu <- a + b*x,
+    x ~ normal(0,1),
+    c(a,b) ~ normal(0,1),
+    sigma ~ exponential(1)
+  ),
+  data=d, chains=4, cores=4
+)
+precis(h15.3b,2)
+```
+
+```{r}
+h15.3c <- ulam(
+  alist(
+    y ~ student_t(4, mu, sigma),
+    mu <- a + b*x,
+    x ~ normal(0,1),
+    c(a,b) ~ normal(0,1),
+    sigma ~ exponential(1)
+  ),
+  data=d, chains=4, cores=4
+)
+precis(h15.3c,2)
+```
+```{r}
+h15.3d <- ulam(
+  alist(
+    y ~ student_t(4, mu, sigma),
+    mu <- a + b*x,
+    x ~ normal(0,1),
+    c(a,b) ~ normal(0,100),
+    sigma ~ exponential(1)
+  ),
+  data=d, chains=4, cores=4
+)
+precis(h15.3d,2)
+```
+
+The posterior mean of B becomes insignificant statistically. That also happens to the imputed values
+
+As we randomly assigns a big number into the position of missing value, the sampler treats it as an outlier. By using a strongly informative prior in h15.3b, the sampler works better and the posterior estimate of coefficient for B becomes less severe
+
+The situation gets better when we use a heavier tail distribution in the last two models
+
+# 15H4
+
+```{r}
+data(Primates301)
+d <- Primates301
+cc <- complete.cases( d$brain , d$body )
+B <- d$brain[cc]
+M <- d$body[cc]
+B <- B / max(B)
+M <- M / max(M)
+```
+
+
+```{r}
+Bse <- B*0.1
+Mse <- M*0.1
+```
+
+
+```{r}
+dat_list <- list(B=B, M=M)
+
+h15.4a <- ulam(
+    alist(
+        B ~ dlnorm( mu , sigma ),
+        mu <- a + b*log(M),
+        a ~ normal(0,1),
+        b ~ normal(0,1),
+        sigma ~ exponential(1)
+    ) , 
+    data=dat_list, chains=4, cores=4
+)
+precis(h15.4a)
+```
+
+```{r}
+dat_list <- list(B_obs=Bse, M_obs=Mse, N=182,M=M,M=B)
+
+h15.4b <- ulam(
+    alist(
+        B_obs ~ dlnorm(B_true, 0.1),
+        vector[N]:B_true ~ normal(mu, sigma),
+        mu <- a + b*log(M_true[i]),
+        M_obs ~ normal(M_true, 0.1),
+        vector[N]:M_true ~ half_normal(0,1),
+        a ~ normal(0,1),
+        b ~ normal(0,1),
+        sigma ~ exponential(1)
+    ) , 
+    data=dat_list, chains=4, cores=4, 
+    start=list(M_true=dat_list$M , B_true=dat_list$B)
+)
+precis(h15.4b,2)
+```
+
+# 15H5
+
+```{r}
+data(Primates301)
+d <- Primates301
+colSums( is.na(d) )
+```
+
+
+```{r}
+cc <- complete.cases( d$body )
+M <- d$body[cc]
+M <- M / max(M)
+B <- d$brain[cc]
+B <- B / max( B , na.rm=TRUE )
+```
+
+
+```{r}
+d$cc <- cc
+colSums(is.na(filter(d,cc == TRUE)))
+```
+
+
+```{r}
+ddat_list <- list(B_obs=B, M=M, N=2238)
+
+h15.5a <- ulam(
+    alist(
+        B_obs ~ normal(B_true, sigma_B),
+        vector[N]:B_true ~ dlnorm(mu, sigma),
+        mu <- a + b*log(M),
+        sigma_B ~ exponential(1),
+        a ~ normal(0,1),
+        b ~ normal(0,1),
+        sigma ~ exponential(1)
+    ),
+    data=dat_list, chains=4, cores=4, start=list(B_impute=rep(0.5,56))
+)
+precis(h15.5a,2)
+```
+
+# 15H6
+
+```{r}
+data("WaffleDivorce")
+d <- WaffleDivorce
+```
+
+
+$$
+D_{OBS,i} \sim Normal(D_{TRUE,i},D_{SE,i})\\
+D_{TRUE,i} \sim Normal(\mu_{i},\sigma)\\
+\mu_{i} = \alpha + \beta_{A}A_{i} + \beta_{M}M_{TRUE,i}\\
+M_{OBS,i} \sim Normal(M_{TRUE,i},M_{SE,i})\\
+M_{TRUE,i} \sim Normal(0,1)\\
+\alpha \sim Normal(0,0.2)\\
+\beta_{A} \sim Normal(0,0.5)\\
+\beta_{M} \sim Normal(0,0.5)\\
+\sigma \sim Exponential(1)
+$$
+
+```{r}
+dlist <- list(
+  D_obs = standardize(d$Divorce),
+  D_sd = d$Divorce.SE/sd(d$Divorce),
+  M_obs = standardize(d$Marriage),
+  M_sd = d$Marriage.SE/sd(d$Marriage),
+  A = standardize(d$MedianAgeMarriage),
+  N = nrow(d)
+)
+```
+
+
+```{r}
+h15.6a <- ulam(
+  alist(
+    D_obs ~ normal(D_true, D_sd),
+    vector[N]:D_true ~ normal(mu, sigma),
+    mu <- a + bA*A + bM*M_true[i],
+    M_obs ~ normal(M_true, M_sd),
+    vector[N]:M_true ~ normal(0,1),
+    a ~ normal(0,0.2),
+    bA ~ normal(0,0.5),
+    bM ~ normal(0,0.5),
+    sigma ~ exponential(1)
+  ),
+  data=dlist, chains=4, cores=4
+)
+precis(h15.6a, depth=3)
+```
+
+```{r}
+post <- extract.samples(h15.6a)
+D_true <- apply(post$D_true,2,mean)
+M_true <- apply(post$M_true,2,mean)
+```
+
+
+```{r}
+plot(dlist$M_obs, dlist$D_obs, pch=16, col=rangi2,
+     xlab="marriage rate (std)", ylab="divorce rate (std)")
+points(M_true, D_true)
+for(i in 1:nrow(d)){
+  lines(x=c(dlist$M_obs[i],M_true[i]),y=c(dlist$D_obs[i],D_true[i]))
+}
+```
+
+```{r}
+# h15.6b <- ulam(
+#   alist(
+#     D_obs ~ normal(D_true, D_sd),
+#     vector[N]:D_true ~ normal(mu, sigma),
+# 
+#     mu <- a + bA*A + bM*M,
+#     
+#     M_obs ~ normal(M_true, M_sd),
+#     # vector[N]:M_true ~ normal(0,1),
+#     
+#     A ~ normal(A_true, 0),
+#     # vector[N]:A_true ~ normal(0,1),
+# 
+#     c(M_true, A_true) ~ multi_normal(c(muA,muM), Rho_MA, Sigma_MA),
+# 
+#     c(muA, muM, a) ~ normal(0,0.5),
+#     Rho_MA ~ lkj_corr(2),
+#     Sigma_MA ~ exponential(1),
+#     bA ~ normal(0,0.5),
+#     bM ~ normal(0,0.5),
+#     sigma ~ exponential(1)
+#   ),
+#   data=dlist, chains=4, cores=4
+# )
+# precis(h15.6b, depth=3)
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

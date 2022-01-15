@@ -1,0 +1,595 @@
+---
+title: "Exercise-C4"
+output: github_document
+---
+
+```{r}
+rm(list=ls())
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(rethinking)
+library(splines)
+```
+
+
+# 4E1
+
+Likelihood: $y_{i} \sim Normal(\mu, \sigma)$
+
+# 4E2
+
+There are two parameters, $\mu$ and $\sigma$
+
+# 4E3
+
+$$
+Pr(\mu, \sigma|y) = \frac{\prod_{i} Normal(y_{i}|\mu,\sigma)Normal(\mu|0,10)Exponential(\sigma|1)}{\int \int \prod_{i} Normal(h_{i}|\mu,\sigma)Normal(\mu|0,10)Exponential(\sigma|1)d\mud\sigma}
+$$
+
+# 4E4
+
+Linear model: $\mu_{i} = \alpha + \beta x_{i}$
+
+# 4E5
+
+There are three parameters, $\alpha$, $\beta$, and $\sigma$
+
+# 4M1
+
+```{r}
+N <- 100
+p_mu <- rnorm(n=N,mean=0,sd=10)
+p_sigma <- rexp(n=N, rate=1)
+p_obs <- rnorm(n=N, mean=p_mu, sd=p_sigma)
+```
+
+```{r}
+dens(p_obs)
+```
+# 4M2
+
+```{r}
+flist <- alist(
+    y ~ dnorm(mean=mu, sd=sigma),
+    mu ~ dnorm(mean=0, sd=10),
+    sigma ~ dexp(rate = 1)
+  )
+```
+
+# 4M3
+
+$$
+y_{i} \sim Normal(\mu, \sigma)\\
+\mu = \alpha + \beta x\\
+\alpha \sim Normal(0,10)\\
+\beta \sim Uniform(0,1)\\
+\sigma \sim Exp(1)
+$$
+
+# 4M4 + 4M5 + 4M6
+
+$$
+h_{i} \sim Normal(\mu,\sigma)
+\mu = \alpha + \beta*x
+\alpha ~ Normal(178,20)
+\beta ~ LogNormal(0,1)
+\sigma ~ Exp(1)
+$$
+
+$\beta$ is positive as students get taller each year
+
+$\alpha$ has a variance of less than 64 cm
+
+```{r}
+data("Howell1")
+d <- Howell1
+d2 <- d[d$age >= 18,]
+```
+
+```{r}
+head(d2)
+```
+
+```{r}
+xbar = mean(d2$weight)
+```
+
+
+```{r}
+m4.3 <- quap(
+  alist(
+    height ~ dnorm(mean=mu, sd=sigma),
+    mu <- a + b*(weight),
+    a ~ dnorm(mean=178, sd=20),
+    b ~ dlnorm(meanlog = 0, sdlog = 1),
+    sigma ~ dunif(min = 0, max = 50)
+  ),
+  data = d2
+)
+```
+
+Posterior estimates of $\alpha$ are smaller than in the original model
+
+```{r}
+precis(m4.3)
+```
+Sampled parameters are correlated.
+
+```{r}
+round(vcov(m4.3),3)
+```
+
+Posterior prediction is the same as the original model
+
+```{r}
+plot(height ~ weight, data=d2, col=rangi2)
+post <- extract.samples(m4.3)
+a_map <- mean(post$a)
+b_map <- mean(post$b)
+curve(a_map + b_map*(x), add=TRUE)
+```
+# 4M8
+
+```{r}
+data("cherry_blossoms")
+d <- cherry_blossoms
+precis(d)
+```
+
+
+```{r}
+d2 <- d[complete.cases(d$doy),]
+num_knots <- 15
+knot_list <- quantile(d2$year, probs=seq(from=0,to=1,length.out=num_knots))
+```
+
+
+```{r}
+B <- bs(d2$year, knots = knot_list[-c(1,num_knots)],
+        degree=3, intercept=TRUE)
+```
+
+
+```{r}
+plot(NULL, xlim=range(d2$year),ylim=c(0,1),xlab="year",
+     ylab="basis")
+for(i in 1:ncol(B)){
+  lines(d2$year, B[,i])
+}
+```
+
+
+```{r}
+m4.7 <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + B %*% w,
+    a ~ dnorm(100,10),
+    w ~ dnorm(0,1),
+    sigma ~ dexp(1)
+  ),
+  data = list(D = d2$doy, B=B),
+  start=list(w=rep(0, ncol(B)))
+)
+```
+
+
+```{r}
+post <- extract.samples(m4.7)
+w <- apply(post$w, 2, mean)
+plot(NULL, xlim=range(d2$year), ylim=c(-6,6),
+     xlab="year",ylab="basis*weight")
+for(i in 1:ncol(B)){
+  lines(d2$year, w[i]*B[,i])
+}
+```
+
+
+```{r}
+mu <- link(m4.7)
+mu_PI <- apply(mu, 2, PI, prob=0.97)
+plot(d2$year, d2$doy, col=col.alpha(rangi2,alpha=0.3),pch=16)
+shade(object=mu_PI,lim=d2$year,col=col.alpha("black",0.5))
+```
+Increasing the number of knots makes the posterior prediction lines wigglier while using a strong prior on the weights flattens these lines as the deviation is tiny
+
+# 4H1
+
+```{r}
+data("Howell1")
+d <- Howell1
+# d2 <- d[d$age >= 18,]
+```
+
+```{r}
+xbar <- mean(d$weight)
+```
+
+
+```{r}
+h4.1 <- quap(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <-  a + b*(weight - xbar),
+    a ~ dnorm(178,10),
+    b ~ dlnorm(0,10),
+    sigma ~ dunif(0,10)
+  ),
+  data = d
+)
+```
+
+
+```{r}
+precis(h4.1)
+```
+
+```{r}
+lst_weight <- c(46.95,43.72,64.78,32.59,54.63)
+```
+
+
+```{r}
+post <- extract.samples(h4.1)
+a_map <- mean(post$a)
+b_map <- mean(post$b)
+```
+
+
+```{r}
+sim.height <- sim(fit=h4.1, data=list(weight=lst_weight))
+```
+
+```{r}
+height.PI <- apply(sim.height, 2, PI, prob=0.89)
+height.PI
+```
+
+
+```{r}
+height.mean <- apply(sim.height, 2, mean)
+height.mean
+```
+
+# 4H2
+
+```{r}
+d2 <- d[d$age < 18,]
+dim(d2)
+```
+
+```{r}
+h4.2 <- quap(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- a + b*(weight - mean(weight)),
+    a <- dnorm(120,10),
+    b <- dlnorm(0,10),
+    sigma <- dunif(0,10)
+  ),
+  data = d2
+)
+```
+
+
+```{r}
+precis(h4.2)
+```
+
+```{r}
+weight_seq <- seq(from=min(d2$weight),to=max(d2$weight),by=10)
+```
+
+
+```{r}
+sim.height <- sim(fit=h4.2, data=list(weight=weight_seq))
+```
+
+```{r}
+height.mean <- apply(sim.height, 2, mean)
+height.mean
+```
+
+
+```{r}
+inc <- 0
+for(i in 1:4){
+  inc <- inc + height.mean[i+1]-height.mean[i]
+}
+```
+
+
+```{r}
+print(paste0("The average increase in height = ",round(inc/4,2)))
+```
+
+
+```{r}
+mu <- link(fit=h4.2, data = data.frame(weight=weight_seq))
+```
+
+
+```{r}
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu, 2, PI, prob=0.89)
+```
+
+```{r}
+height.PI <- apply(sim.height, 2, PI, prob=0.89)
+```
+
+
+```{r}
+plot(height ~ weight, d2, col=rangi2)
+lines(weight_seq, mu.mean)
+shade(mu.PI, weight_seq,alpha=0.5)
+shade(height.PI, weight_seq, alpha=1)
+```
+Height implicitly shows a non-linear function of weight. Polynimal regression seems reasonable here.
+
+# 4H3
+
+```{r}
+d$lweight <- log(d$weight)
+head(d)
+```
+
+```{r}
+xbar <- mean(d$lweight)
+```
+
+
+```{r}
+h4.3 <- quap(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- a + b*(lweight- xbar),
+    a ~  dnorm(178,10),
+    b ~  dlnorm(0,1),
+    sigma ~  dunif(0,10)
+  ),
+  data=d
+)
+```
+
+
+```{r}
+precis(h4.3)
+```
+
+```{r}
+post <- extract.samples(h4.3)
+weight_seq <- (seq(from=min(d$weight),to=max(d$weight),length.out=1e3))
+mu <- link(fit = h4.3, data = data.frame(lweight=log(weight_seq)))
+height <- sim(fit=h4.3, data = list(lweight=log(weight_seq)))
+
+mu.mean <- apply(mu, 2, mean)
+mu.PI <- apply(mu,2,PI, prob=0.97)
+height.PI <- apply(height, 2, PI, prob=0.97)
+```
+
+
+```{r}
+plot(height ~ weight, data=d, col=rangi2)
+lines(weight_seq,mu.mean)
+shade(mu.PI, weight_seq)
+shade(height.PI, weight_seq)
+```
+
+# 4H4
+
+```{r}
+d$weight_s <- (d$weight - mean(d$weight))/sd(d$weight)
+```
+
+
+```{r}
+set.seed(2971)
+N <- 100
+a <- rnorm(n=N, mean = 178, sd = 10)
+b1 <- rlnorm(n=N, meanlog=0, sdlog=1)
+b2 <- rnorm(n=N, mean=0, sd=1)
+```
+
+```{r}
+xbar <- mean(d$weight)
+```
+
+
+```{r}
+plot(NULL, xlim=range(d$weight), ylim=c(-100,400),
+     xlab='weight', ylab='height')
+abline(h=0, lty=2)
+abline(h=272, lty=1, lwd=0.5)
+for(i in 1:N){
+  curve(a[i] + b1[i]*x + b2[i]*x^2,
+        from=min(d$weight_s), to=max(d$weight_s), add=TRUE,
+        col=col.alpha('black',0.2))
+}
+```
+
+# 4H5
+
+```{r}
+data("cherry_blossoms")
+d <- cherry_blossoms
+head(d)
+```
+
+
+```{r}
+d2 <- d[complete.cases(d$doy, d$temp),]
+head(d2)
+```
+
+```{r}
+precis(d2)
+```
+
+
+```{r}
+plot(doy ~ temp, data=d2, col=rangi2)
+```
+
+```{r}
+h4.5 <- quap(
+  alist(
+    doy ~ dnorm(mu, sigma),
+    mu <-  a - b*temp,
+    a ~ dnorm(105,10),
+    b ~ dnorm(0,10),
+    sigma ~ dexp(1)
+  ),
+  data = d2
+)
+```
+
+
+```{r}
+precis(h4.5)
+```
+
+
+```{r}
+post <- extract.samples(h4.5)
+a.map <- mean(post$a)
+b.map <- mean(post$b)
+temp.seq <- seq(from=min(d2$temp), to=max(d2$temp), length.out=1e3)
+mu <- link(fit = h4.5, data=data.frame(temp=temp.seq))
+mu.mean <- apply(mu,2,mean)
+mu.PI <- apply(mu,2,PI,prob=0.89)
+```
+
+
+```{r}
+plot(doy ~ temp, data=d2, col=rangi2)
+lines(temp.seq, mu.mean)
+shade(mu.PI, temp.seq)
+```
+
+# 4H6
+
+```{r}
+data("cherry_blossoms")
+d <- cherry_blossoms
+```
+
+
+```{r}
+d2 <- d[complete.cases(d$doy),]
+num_knots <- 15
+knot_list <- quantile(d2$year, probs=seq(from=0,to=1,length.out=num_knots))
+```
+
+```{r}
+B <- bs(d2$year, knots = knot_list[-c(1,num_knots)],
+        degree=3, intercept=TRUE)
+```
+
+```{r}
+m4.7 <- quap(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + B %*% w,
+    a ~ dnorm(100,10),
+    w ~ dnorm(0,10),
+    sigma ~ dexp(1)
+  ),
+  data = list(D = d2$doy, B=B),
+  start=list(w=rep(0, ncol(B)))
+)
+```
+
+
+```{r}
+post <- extract.prior(m4.7)
+w <- apply(post$w, 2, mean)
+plot(NULL, xlim=range(d2$year), ylim=c(-6,6),
+     xlab="year",ylab="basis*weight")
+for(i in 1:ncol(B)){
+  lines(d2$year, w[i]*B[,i])
+}
+```
+
+
+```{r}
+mu <- link(m4.7, post=post)
+mu_PI <- apply(mu, 2, PI, prob=0.97)
+plot(d2$year, d2$doy, col=col.alpha(rangi2,alpha=0.3),pch=16)
+shade(object=mu_PI,lim=d2$year,col=col.alpha("black",0.5))
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+

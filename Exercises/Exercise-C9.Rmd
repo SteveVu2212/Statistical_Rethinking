@@ -1,0 +1,600 @@
+---
+title: "Exercise-C9"
+output: github_document
+---
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(rstan)
+library(shape)
+library(tidyr)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+```
+
+```{r}
+rstan_options(auto_write = TRUE)
+```
+
+# 9E1
+
+(3) - The proposal distribution must be symmetric
+
+# 9E2
+
+Gibbs sampling's pros:
+* Allows for asymmetric distribution of proposal parameters
+* Be efficient to get a good estimate of the posterior with many fewer samples due to adaptive proposals which the distribution of proposed parameter values adjusts itself intelligently
+* Utilize conjugate pairs
+
+Gibbs sampling's cons:
+* Conjugate priors are not always applicable
+* Become inefficient as the number of parameters increase. It cannot break the curse of autocorrelation between parameters caused by Markov chain. Recall that any markov chain approach that samples individual parameters in individual steps is going to get stuck, once the number of parameters grow sufficiently large. Thus, we need MCMC algorithms that focus on the entire posterior at once, instead of one or a few dimentions at a time
+
+# 9E3
+
+HMC uses many fewer samples to describe the posterior distribution as its proposals are much more efficient.
+
+The autocorrelation is very low under HMC
+
+However, we or our machine need to chose two parameters for HMC, including Leapfrog steps and step size. Those two parameters directly influence the efficiency of HMC as its combinations can create the U-turn problem.
+
+To overcome it, HMC samplers like Stan have two ways to deal with U-turns:
+* It conducts a warm-up phase to figure out which step size explores the posterior efficiently.
+* It use No-U-Turn sampler algorithm (NUST) ti adaptively set the number of leapfrog steps. The NUST uses the shape of the posterior to infer when the path is turning around.
+
+# 9E4
+
+n_eff is an estimate of the number of independent samples from the posterior distribution.
+
+# 9E5
+
+Rhat should be 1.00. If it is above 1.00, it indicates that the chain has not converged. However, there are cases that Rhat can reach 1.00 even for an invalid chain.
+
+# 9E6
+
+Good trace plots have three properties:
+* Stationarity: The path of each chain staying within the same-high probability portion of the posterior distribution.
+* Good mixing: The chain rapidly explores the full region.
+* Convergence: Multiple, independent chains stick around the same region of high probability.
+
+# 9M1
+
+```{r}
+data("rugged")
+d <- rugged
+```
+
+
+```{r}
+d$log_gdp <- log(d$rgdppc_2000)
+dd <- d[ complete.cases(d$rgdppc_2000) , ]
+dd$log_gdp_std <- dd$log_gdp / mean(dd$log_gdp)
+dd$rugged_std <- dd$rugged / max(dd$rugged)
+dd$cid <- ifelse( dd$cont_africa==1 , 1 , 2 )
+```
+
+
+```{r}
+dat_slim <- list(
+  log_gdp_std = dd$log_gdp_std,
+  rugged_std = dd$rugged_std,
+  cid = as.integer(dd$cid)
+)
+```
+
+
+```{r}
+m9.1a <- ulam(
+  alist(
+    log_gdp_std ~ dnorm(mu, sigma),
+    mu <- a[cid] + b[cid]*(rugged_std - 0.215),
+    a[cid] ~ dnorm(1,0.1),
+    b[cid] ~ dnorm(0,0.3),
+    sigma ~ dunif(0,10)
+  ),
+  data=dat_slim, chains=4, cores=4, log_lik = TRUE
+)
+```
+
+
+```{r, fig.height=3, fig.width=3}
+pairs(m9.1)
+```
+
+
+```{r}
+pairs(m9.1@stanfit)
+```
+
+```{r}
+precis(m9.1, depth=2)
+```
+
+
+```{r}
+m9.1b <- ulam(
+  alist(
+    log_gdp_std ~ dnorm(mu, sigma),
+    mu <- a[cid] + b[cid]*(rugged_std - 0.215),
+    a[cid] ~ dnorm(1,0.1),
+    b[cid] ~ dnorm(0,0.3),
+    sigma ~ dexp(1)
+  ),
+  data=dat_slim, chains=4, cores=4, log_lik = TRUE
+)
+```
+
+
+```{r, fig.height=3, fig.width=3}
+pairs(m9.1b)
+```
+
+
+```{r}
+precis(m9.1b, depth=2)
+```
+
+In the specific case, the different priors produce non-significant effects on the posterior distributions. While the uniform prior is flatter than the exponential prior, it is not so extreme that it makes sampling divergent.
+
+# 9M2
+
+```{r}
+m9.2a <- ulam(
+  alist(
+    log_gdp_std ~ dnorm(mu, sigma),
+    mu <- a[cid] + b[cid]*(rugged_std - 0.215),
+    a[cid] ~ dnorm(1,0.1),
+    b[cid] ~ dnorm(0,0.3),
+    sigma ~ dcauchy(location=0,scale=1)
+  ),
+  data=dat_slim, chains=4, cores=4, log_lik = TRUE
+)
+```
+
+
+```{r, fig.height=7, fig.width=1}
+pairs(m9.2a@stanfit)
+```
+
+
+```{r}
+precis(m9.2a, depth=2)
+```
+
+
+```{r}
+m9.2b <- ulam(
+  alist(
+    log_gdp_std ~ dnorm(mu, sigma),
+    mu <- a[cid] + b[cid]*(rugged_std - 0.215),
+    a[cid] ~ dnorm(1,0.1),
+    b[cid] ~ dnorm(0,0.3),
+    sigma ~ dhalfcauchy(0,1)
+  ),
+  data=dat_slim, chains=4, cores=4, log_lik = TRUE
+)
+```
+
+
+```{r}
+pairs(m9.2b@stanfit)
+```
+
+
+```{r}
+precis(m9.2b, depth=2)
+```
+
+
+```{r}
+compare(m9.2a, m9.2b, m9.1a, m9.1b)
+```
+
+As sigma is lower bounded at 0, using HalfCauchy distribution is more reasonable than Cauchy distribution.
+
+The model comparison shows a better predictive power of the models using HalfCauchy and Exponential distributions over those with Uniform and Cauchy distributions.
+
+However, the difference is light and the posterior distribution for the specific case looks similar.
+
+# 9M3
+
+```{r}
+m9.3a <- ulam(
+  alist(
+    log_gdp_std ~ dnorm(mu, sigma),
+    mu <- a[cid] + b[cid]*(rugged_std - 0.215),
+    a[cid] ~ dnorm(1,0.1),
+    b[cid] ~ dnorm(0,0.3),
+    sigma ~ dhalfcauchy(0,1)
+  ),
+  data=dat_slim, chains=1, cores=4, log_lik = TRUE, warmup = 1000, iter = 10000
+)
+```
+
+
+```{r}
+traceplot(m9.3a)
+```
+
+
+```{r}
+m9.3b <- ulam(
+  alist(
+    log_gdp_std ~ dnorm(mu, sigma),
+    mu <- a[cid] + b[cid]*(rugged_std - 0.215),
+    a[cid] ~ dnorm(1,0.1),
+    b[cid] ~ dnorm(0,0.3),
+    sigma ~ dhalfcauchy(0,1)
+  ),
+  data=dat_slim, chains=3, cores=4, log_lik = TRUE, warmup = 1000, iter = 4000
+)
+```
+
+
+```{r}
+traceplot(m9.3b)
+```
+
+
+```{r, fig.height=5, fig.width=5}
+trankplot(m9.3b)
+```
+```{r}
+m9.3c <- ulam(
+  alist(
+    log_gdp_std ~ dnorm(mu, sigma),
+    mu <- a[cid] + b[cid]*(rugged_std - 0.215),
+    a[cid] ~ dnorm(1,0.1),
+    b[cid] ~ dnorm(0,0.3),
+    sigma ~ dhalfcauchy(0,1)
+  ),
+  data=dat_slim, chains=3, cores=4, log_lik = TRUE, warmup = 250, iter = 4000
+)
+```
+
+
+```{r}
+precis(m9.3a, 2)
+```
+
+
+```{r}
+precis(m9.3b, 2)
+```
+
+
+```{r}
+precis(m9.3c, 2)
+```
+
+The third model indicates that we need only 250 warmup samples to get posterior distributions as efficient as it is with 1000 warmup samples.
+
+# 9H1
+
+```{r}
+mp <- map2stan(
+    alist(
+        a ~ dnorm(0,1),
+        b ~ dcauchy(0,1)
+    ),
+    data=list(y=1),
+    start=list(a=0,b=0),
+    iter=1e4, warmup=100 , WAIC=FALSE )
+```
+
+
+```{r}
+precis(mp)
+```
+
+
+```{r}
+tracerplot(mp)
+```
+
+The posterior of a centers around its mean of 1 while the posterior density of b has extreme values that make its scale upto 21.
+
+b follows a Cauchy distribution with a peak at 0 and a scale parameter of 1. In compared with a normal distribution, the Cauchy has heavier tails and has no finite variance.
+
+# 9H2
+
+```{r}
+data("WaffleDivorce")
+d <- WaffleDivorce
+```
+
+
+```{r}
+d$D <- standardize(d$Divorce)
+d$M <- standardize(d$Marriage)
+d$A <- standardize(d$MedianAgeMarriage)
+```
+
+```{r}
+dat_slim <- list(
+  D = d$D,
+  M = d$M,
+  A = d$A
+)
+```
+
+
+```{r}
+h9.2a <- ulam(
+  alist(
+    D ~ dnorm(mean=mu, sd=sigma),
+    mu <- a + bA*A,
+    a ~ dnorm(mean=0,sd=0.2),
+    bA ~ dnorm(mean=0,sd=0.5),
+    sigma ~ dexp(1)
+  ),
+  data=dat_slim, log_lik = TRUE, chains = 4, cores = 4
+)
+```
+
+
+```{r}
+h9.2b <- ulam(
+  alist(
+    D ~ dnorm(mean=mu, sd=sigma),
+    mu <- a + bM*M,
+    a ~ dnorm(mean=0, sd=0.2),
+    bM ~ dnorm(mean=0, sd=0.5),
+    sigma ~ dexp(1)
+  ),
+  data = dat_slim, log_lik = TRUE, chains = 4, cores = 4
+)
+```
+
+
+```{r}
+h9.2c <- ulam(
+  alist(
+    D ~ dnorm(mu, sigma),
+    mu <- a + bM*M + bA*A,
+    a ~ dnorm(0,0.2),
+    bM ~ dnorm(0,0.5),
+    bA ~ dnorm(0,0.5),
+    sigma ~ dexp(1)
+  ),
+  data=dat_slim, chains = 4, cores = 4, log_lik = TRUE
+)
+```
+
+
+```{r}
+compare(h9.2a, h9.2b, h9.2c, func = WAIC)
+```
+The mode comparison confirms the DAG we visited as Age has direct and indirect impacts on Divorce. The influence of Marriage is subtle as the standard deviation of samples of h9.2a and h9.2c is small.
+
+The weight implies that h9.2a likely overfits the data.
+
+# 9H3
+
+```{r}
+N <- 100
+height <- rnorm(N,10,2)
+leg_prop <- runif(N,0.4,0.5)
+leg_left <- leg_prop*height + rnorm( N , 0 , 0.02 )
+leg_right <- leg_prop*height + rnorm( N , 0 , 0.02 )
+d <- data.frame(height, leg_left, leg_right)
+```
+
+
+```{r}
+m5.8s <- ulam(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- a + bl*leg_left + br*leg_right,
+    a ~ dnorm(10,100),
+    bl ~ dnorm(2,10),
+    br ~ dnorm(2,10),
+    sigma ~ dexp(1)
+  ),
+  data = d, chains=4,
+  start=list(a=10,bl=0,br=0.1,sigma=1)
+)
+```
+
+
+```{r}
+pairs(m5.8s)
+```
+
+
+```{r}
+m5.8c <- ulam(
+  alist(
+    height ~ dnorm(mu, sigma),
+    mu <- a + bl*leg_left + br*leg_right,
+    a ~ dnorm(10,100),
+    bl ~ dnorm(2,10),
+    br ~ dlnorm(2,10),
+    sigma ~ dexp(1)
+  ),
+  data = d, chains=4,cores=4,
+  start=list(a=10,bl=0,br=0.1,sigma=1)
+)
+```
+
+
+```{r}
+pairs(m5.8c)
+```
+Literaturely, bl and br have a negative linear relationship in the model as they are normally distributed. However, using log-normal on br or setting its prior strictly positive misleads the relationship. 
+Consequently, bl is negatively linear with the intercept a. bl and br are related with an infinite slope.
+
+```{r}
+m5.8s2 <- ulam(
+    alist(
+        height ~ dnorm( mu , sigma ) ,
+        mu <- a + bl*leg_left + br*leg_right ,
+        a ~ dnorm( 10 , 100 ) ,
+        bl ~ dnorm( 2 , 10 ) ,
+        br ~ dnorm( 2 , 10 ) ,
+        sigma ~ dexp( 1 )
+),
+data=d, chains=4, constraints=list(br="lower=0"), start=list(a=10,bl=0,br=0.1,sigma=1) )
+```
+
+
+```{r}
+pairs(m5.8s2)
+```
+
+```{r}
+precis(m5.8s)
+```
+
+```{r}
+precis(m5.8s2)
+```
+
+
+Different to using log-normal, the constraints forces br to be positive but still remains the negative linear relationship with bl. The posterior distributions of br and bl look similar to those of m5.8s.
+
+# 9H5
+
+```{r}
+set.seed(95)
+labels <- seq(from=1,to=10,length.out=10)
+populations <- sample(1:10,10, replace=FALSE)
+```
+
+```{r}
+populations
+```
+
+
+```{r}
+num_weeks <- 1e5
+positions <- rep(0,num_weeks)
+current <- 10
+for(i in 1:num_weeks){
+  # record current position
+  positions[i] <- current
+  
+  # flip a coin to generate proposal
+  proposal <- current + sample(c(-1,1),size=1)
+  # loops around the archipelago
+  if(proposal < 1) proposal <- 10
+  if(proposal > 10) proposal <- 1
+  # move decision
+  prob_move <- populations[proposal]/populations[current]
+  current <- ifelse(runif(1) < prob_move, proposal, current)
+}
+```
+
+
+```{r}
+plot(1:100, positions[1:100], xlab="week", ylab="island")
+```
+
+
+```{r}
+plot(table(positions), xlab="island", ylab="number of weeks")
+plot(populations, labels, col=col.alpha(rangi2,1))
+```
+
+
+```{r}
+d <- data.frame(table(positions))
+d$Pop <- populations
+d
+```
+
+```{r}
+d1 <- tidyr::pivot_longer(d, cols=c("Freq", "Pop"), names_to = "variable", values_to = "value")
+d1
+```
+
+
+```{r}
+r <- 10/max(d1$value)
+ggplot(d1, aes(x=positions, y=value, fill=factor(variable))) + 
+  geom_bar(stat="identity", position="dodge") + 
+  scale_y_continuous(name = "Frequency",
+                     sec.axis = sec_axis(trans = ~.*r, name="Populations"))
+```
+# 9H6
+
+```{r}
+
+# How to allocate n_samples to p. That is similar to the example of Markov's journey which finds a way to allocate num_weeks to positions
+n_samples <- 1000
+p <- rep( NA , n_samples )
+p[1] <- 0.5
+W <- 6
+L <- 3
+for ( i in 2:n_samples ) {
+    # generate a proposal
+    p_new <- rnorm( 1 , p[i-1] , 0.1 )
+    
+    # make a loop
+    if ( p_new < 0 ) p_new <- abs( p_new )
+    if ( p_new > 1 ) p_new <- 2 - p_new
+    
+    # move?
+    q0 <- dbinom( W , W+L , p[i-1] )
+    q1 <- dbinom( W , W+L , p_new )
+    p[i] <- ifelse( runif(1) < q1/q0 , p_new , p[i-1] )
+}
+```
+
+
+```{r}
+dens(p, xlim=c(0,1))
+curve(dbeta(x, W+1, L+1), lty=2, add=TRUE)
+```
+# 9H7
+
+```{r}
+U <- function(q, a=0, b=1){
+  p <- q[1]
+  U <- sum(dbinom(x=x,size=y,prob=p,log=TRUE)) + dnorm(x=p,mean=a,sd=b,log=TRUE)
+  return(-U)
+}
+```
+
+
+```{r}
+U_gradient <- function(q, a=0, b=1){
+  p <- q[1]
+  G <- sum(x/p + (x-y)/(1-p)) + (a - p)/b^2
+  return(c(-G))
+}
+```
+
+
+```{r}
+y <- 9
+x <- rbinom(n=100, size=y, prob=0.7)
+```
+
+
+```{r}
+Q <- list()
+Q$q <- c(0.7)
+step <- 0.03
+L <- 11
+n_samples <- 4
+for(i in 1:n_samples){
+  Q <- HMC2(U, U_gradient, step, L, Q$q)
+}
+```
+
+
+```{r}
+Q
+```
