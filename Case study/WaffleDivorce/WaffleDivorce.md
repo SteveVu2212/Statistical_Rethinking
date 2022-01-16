@@ -275,7 +275,7 @@ Both of these models is showing us a correlation between marriage age
 with divorce rate and marriage rate with divorce rate. Our ultimate goal
 is to find out the causality, not correlation. How can we do it?
 
-## DAGs
+## Directed Acyclic Graphs (DAGs)
 
 Let’s think before we regress and causal diagrams are essential
 
