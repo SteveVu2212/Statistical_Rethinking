@@ -33,7 +33,7 @@ rstan_options(auto_write = TRUE)
 
 # Load data
 
-The research question is which factors causaly impact the energy content of milk, measured by kilocarlories.
+The research question is which factors causaly impact the energy content of milk, measured by kilocarlories
 
 ```{r}
 data(milk)
@@ -47,7 +47,7 @@ d$N <- standardize(d$neocortex.perc)
 d$M <- standardize(log(d$mass))
 ```
 
-There are missing values in the data. Firstly, we will do a complete case analysis. Eventually, we will analyze the way to impute these missing values and extract information from them.
+There are missing values in the data. Firstly, we will do a complete case analysis. Eventually, we will analyze the way to impute these missing values and extract information from them
 
 ```{r}
 vis_dat(d)
@@ -69,7 +69,7 @@ mu = \alpha + \beta_{N}N\\
 \sigma \sim Exponential(1)
 $$
 
-## Prior predictive check
+## Prior predictive checks
 
 ```{r}
 set.seed(1)
@@ -101,7 +101,7 @@ lines(x=N.seq, y=K.mu)
 shade(K.pi, N.seq)
 ```
 
-As we can see, the prior is very flat. We can make it stronger by reducing the standard deviation of parameters.
+As we can see, the prior is very flat. We can make it stronger by reducing the standard deviation of parameters
 
 ```{r}
 set.seed(2)
@@ -289,11 +289,11 @@ precis(m.1.3)
 # plot(coeftab(m.1.1, m.1.2, m.1.3), pars=c("bM", "bN"))
 ```
 
-The outcome is contrast to the previous ones as both M and N have significant association with K, but in the opposite ways. The reasonable explanation is that M and N are correlated with the outcome variables, but one is positive correlated with it and the other is negatively correlated with it.
+The outcome is contrast to the previous ones as both M and N have significant association with K, but in the opposite ways. The reasonable explanation is that M and N are correlated with the outcome variables, but one is positive correlated with it and the other is negatively correlated with it
 
 ## DAG and counterfactual plots
 
-Given the data alone, it is hard to draw a causal diagram. Let's try with one diagram below.
+Given the data alone, it is hard to draw a causal diagram. Let's try with one diagram below
 
 ```{r}
 dag1.1 <- dagitty("dag{
@@ -306,7 +306,7 @@ coordinates(dag1.1) <- list(x=c(M=0,K=1,U=1,N=2),
                             y=c(M=0,K=1,U=0,N=0))
 drawdag(dag1.1)
 ```
-Now, we can make counter-factual plots.
+Now, we can make counter-factual plots
 
 ```{r}
 post1.3 <- extract.samples(m.1.3)
@@ -333,8 +333,6 @@ N.seq = seq(from=min(dcc$N)-0.15, to=max(dcc$N)+0.15, length.out=30)
 mu <- matrix(0,nrow=length(post1.3$a), ncol=30)
 for(i in 1:30){mu[,i] = post1.3$a + post1.3$bM*M + post1.3$bN*N.seq[i]}
 
-
-mu <- link(m1.3, data=data.frame(N=N.seq, M=0))
 mu.mean <- apply(mu,2,mean)
 mu.pi <- apply(mu,2,PI,prob=0.89)
 ```
@@ -350,11 +348,11 @@ mtext("Counterfactural holding N=0")
 
 # 2.Imputation
 
-In the original data set, there are 12 missing values in N. Previously, dropping such rows with missing values left us with only 17 cases to work with. In this section, we will try to impute these missing values and extract information from them.
+In the original data set, there are 12 missing values in N. Previously, dropping such rows with missing values left us with only 17 cases to work with. In this section, we will try to impute these missing values and extract information from them
 
 ## DAGs
 
-We are going to draw a DAG that contains our assumption about the cause of missing value of N. The simple DAG below implies of a missing completely at random as nothing influences Rb.
+We are going to draw a DAG that contains our assumption about the cause of missing value of N. The simple DAG below implies of a missing completely at random as nothing influences Rb
 
 ```{r}
 dag1.2 <- dagitty("dag{
@@ -369,7 +367,7 @@ coordinates(dag1.2) <- list(x=c(M=0,K=1,U=1,Rb=1,B=2,B_obs=2),
 drawdag(dag1.2)
 ```
 
-## Statistical models
+## Initial statistical models
 
 $$
 K_{i} \sim Normal(\mu_{i},\sigma)\\
@@ -485,10 +483,10 @@ generated quantities{
 
 ```{r}
 m.2.1 <- stan(model_code=code_m2.1, data=dlist2, chains=4, cores=4)
-precis(m.2.1,2)
+precis(m.2.1)
 ```
 
-## Posterior predictive check
+## Posterior predictive checks
 
 ```{r}
 post <- extract.samples(m.2.1)
@@ -509,7 +507,6 @@ for(i in 1:12){
 }
 ```
 
-
 ```{r}
 plot(NULL, xlim=c(-2,2), ylim=c(-2,2),
      xlab="M (std)", ylab="N (std)")
@@ -522,9 +519,9 @@ for(i in 1:12){
 }
 ```
 
-One thing we learn from these two charts is that the imputed values do not fit well into the variables' association caused by observed data points. We expect to improve the imputation by encoding the information of relationship between M and N into the imputing process.
+One thing we learn from these two charts is that the imputed values do not fit well into the variables' association caused by observed data points. We expect to improve the imputation by encoding the information of relationship between M and N into the imputing process
 
-## Updated statistical model
+## Updated statistical models
 
 $$
 K_{i} \sim Normal(\mu_{i},\sigma)\\
@@ -655,7 +652,7 @@ for(i in 1:12){
   lines(rep(Mi[i],2), N_impute_ci[,i])
 }
 ```
-That is what we expected.
+That is what we expected
 
 #3. Categorical variables
 
@@ -665,7 +662,7 @@ We are going to analyze the difference in K between four groups covered by the c
 d$clade_id <- as.integer(d$clade)
 ```
 
-## Statistical model
+## Statistical models
 
 $$
 K_{i} \sim Normal(\mu_{i},\sigma)\\
