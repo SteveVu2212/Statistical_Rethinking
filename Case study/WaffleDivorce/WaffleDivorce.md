@@ -38,7 +38,7 @@ d$M <- standardize(d$Marriage)
 d$A <- standardize(d$MedianAgeMarriage)
 ```
 
-#1.Spurious association
+# 1.Spurious association
 
 In this part, we are going to examine a misleading correlation between
 Divorce rate with several predictor variables in the data
