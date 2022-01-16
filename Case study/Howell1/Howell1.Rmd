@@ -155,6 +155,12 @@ model{
   }
   height ~ normal(mu, sigma);
 }
+# transformed parameters{
+#   vector[N] log_lik;
+#   for(i in 1:N){
+#     log_lik[i] = normal_lpdf(height[i]|mu[i],sigma);
+#   }
+# }
 generated quantities{
   vector[N] log_lik;
   vector[N] mu;
