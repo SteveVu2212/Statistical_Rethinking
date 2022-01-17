@@ -1,7 +1,6 @@
 # Authors
 
 Steve Vu
-Chapman University - ECON 696 - Economic System Design 3
 
 # Abstract
 
