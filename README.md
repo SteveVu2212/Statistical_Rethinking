@@ -1,12 +1,18 @@
 # Authors
 
 Steve Vu
-Chapman University - ECON 696 - Economic System Design 3
 
-# Abstract
+# Introduction
 
-It is a market design project that focuses on studying optimal strategies and learning processes of economic agents in credence markets. The markets are prevalent in industries of healthcare, car repair, financial advice, insurances, etc. It is where sellers are experts and take advantage of asymmetry information by possibly providing fraudulent treatments while buyers have a little chance of finding out such distrust behavior.
+I see the project as my stepping stone to Bayesian inference. It has walked me through a whole process of fitting a probability model to a set of data and summarizing the result by a probability distribution on the parameters of the model and on unobserved quantities such as predictions for new observations.
 
-In the project, rating or reputation operates as a matching mechanism. Buyers arrive stochastically and rate their satisfaction about served services and directly impacts sellers’ future profit. Sellers aim at maximizing long-term profits by creating reliable reputations, learning and updating strategies. There are two bottom-up approaches to the project, including Monte Carlo simulation and Multi-agent Deep Reinforcement Learning.
+The project includes two parts:
+* The first part covers most of exercises over 16 chapters in an incredible book, [Statistical Rethinking by Richard McElreath](https://xcelab.net/rm/statistical-rethinking/). It really helps me to construct and reinforce my viewpoints of essential characteristics of Bayesian analysis by practicing on various problems from  constructing and analyzing **directed acyclic graphs (DAGs)**, setting up **full probability models** to handling **measurement errors** and imputing **missing data**.
+* My most favourite part is the second one which is highlighted by three things:
+  * It generates comprehensive case studies that inherit different causal questions from the textbook such as the evaluation of the prosocial tendencies of chimpanzees or the technological evolution in the island societies of Oceania.
+  * It is motivated by and follows the [Bayesian workflow](https://arxiv.org/abs/2011.01808) by Gelman et al. (2020).
+  * Its models are written in [Stan](https://mc-stan.org), a state-of-the-art platform for statistical modeling.
 
-The main research finding is that sellers are more eager to provide unfair services via insufficient treatments or overcharging as the penalties are relaxed. The penalties are a combination of probability that an under-treated product fails, probability that buyers find out being overcharged, and a weighing factor stating the importance of historical ratings into buyers’ decisions on selecting sellers to be visited.
+# Disclaimer
+
+Here is the most important thing. The materials and resources being used in the projects belong to the textbook **Statistical Rethinking** by **Richard McElreath**. I credit the book to strongly inspire me to *rethink* my viewpoints of statistics.
