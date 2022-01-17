@@ -1,0 +1,824 @@
+---
+title: "Kline"
+output: github_document
+---
+
+# Instalation
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(MASS)
+library(rstan)
+library(shape)
+library(tidyr)
+require(visdat)
+library(ggplot2)
+library(dagitty)
+library(gtools)
+library(ellipse)
+library(tidyverse)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+# Introduction
+
+We're going to explore the technological evolution in the island societies of Oceania. We focus on the development of tool kits such as fish hooks, axes, boats, hand plows, and many other types of tools that naturally grow up
+
+The motivating question is whether larger populations will both develop and sustain more complex tool kits
+
+# Load data
+
+```{r}
+data(Kline2)
+d <- Kline2
+head(d)
+```
+As theories predict that the number of tools increases with the log population size. We will work with log population, that is the order of magnitude of the population, instead of the absolute size. We will use the standardize log of population
+
+```{r}
+d$P <- scale(log(d$population))
+```
+
+We also count in the binary variable, contact, that implies the connections between societies in islands in the Pacific Ocean
+
+```{r}
+d$contact_id <- ifelse(d$contact=="high",2,1)
+```
+
+# 1. Poisson regression models
+
+## Initial statistical models
+
+$$
+T_{i} \sim Poisson(\lambda_{i})\\
+log(\lambda_{i}) = \alpha_{CID[i]} + \beta_{CID[i]}log(P_{i})\\
+\alpha_{CID[i]} \sim \\
+\beta_{CID[i]} \sim \\
+$$
+
+## Define priors
+
+To determine priors for alpha and beta, we need to construct a prior predictive distribution of the mean of a Poisson
+
+We will test two priors of alpha, one flat and one weakly informative. By using a normal distribution for alpha, the lambda will have a log-normal distribution
+
+A log-normal distribution has a mean of $exp(\mu + \sigma^{2}/2)$. So, a flat prior of alpha will pile up the lambda on zero
+
+```{r}
+set.seed(1)
+N <- 200
+curve(dlnorm(x,0,10), from=0, to=100, n=N, xlab="mean number of tools", ylab="Density")
+text(25,0.07,"a ~ dnorm(0,10)")
+curve(dlnorm(x,3,0.5), from=0, to=100, n=N, col=rangi2, add=TRUE)
+text(45,0.05,"a ~ dnorm(3,0.5)", col=rangi2)
+curve(dlnorm(x,4,0.2), from=0, to=100, n=N, col="blue", add=TRUE)
+text(82,0.03,"a ~ dnorm(4,0.2)",col="blue")
+```
+
+The prior of beta generates a exploding value of the outcome variable. Even if the predictor variable is close to zero, total tools is infinite. We can drop the prior
+
+```{r}
+set.seed(2)
+N <- 200
+a <- rnorm(N,3,0.5)
+b <- rnorm(N,0,10)
+plot(NULL, xlim=c(-2,2), ylim=c(0,100), xlab="log population (std)", ylab="total tools")
+for(i in 1:N){curve(exp(a[i]+b[i]*x), add=TRUE, col=grau())}
+```
+
+Adjusting the prior of beta gives us a more reasonable range as most of lines stay below 40 and center around 20. That is seemingly in line with the prior of alpha
+
+```{r}
+set.seed(2)
+N <- 200
+a <- rnorm(N,3,0.5)
+b <- rnorm(N,0,0.2)
+plot(NULL, xlim=c(-2,2), ylim=c(0,100), xlab="log population (std)", ylab="total tools")
+for(i in 1:N){curve(exp(a[i]+b[i]*x), add=TRUE, col=grau())}
+```
+
+While population size has a natural size, standardizing the variable destroy it. We will plot prior predictive trends between total tools and un-standardized log population. Here, most of prior predictors lie around 100 total tools and some explodes
+
+```{r}
+set.seed(2)
+N <- 200
+a <- rnorm(N,3,0.5)
+b <- rnorm(N,0,0.2)
+x_seq <- seq( from=log(100) , to=log(200000) , length.out=100 )
+lambda <- sapply( x_seq , function(x) exp( a + b*x ) )
+plot( NULL , xlim=range(x_seq) , ylim=c(0,500) , xlab="log population" ,
+    ylab="total tools" )
+for ( i in 1:N ) lines( x_seq , lambda[i,] , col=grau() , lwd=1.5 )
+```
+
+The chart below shows that relationship between total tools and the absolute size of population. The model imposes diminishing returns on population
+
+```{r}
+set.seed(2)
+N <- 200
+a <- rnorm(N,3,0.5)
+b <- rnorm(N,0,0.2)
+x_seq <- seq( from=log(100) , to=log(200000) , length.out=100 )
+lambda <- sapply( x_seq , function(x) exp( a + b*x ) )
+plot( NULL , xlim=range(exp(x_seq)) , ylim=c(0,500) , xlab="population" ,
+    ylab="total tools" )
+for ( i in 1:N ) lines( exp(x_seq) , lambda[i,] , col=grau() , lwd=1.5 )
+```
+
+## Updated statistical models
+
+$$
+T_{i} \sim Poisson(\lambda_{i})\\
+log(\lambda_{i}) = \alpha_{CID[i]} + \beta_{CID[i]}log(P_{i})\\
+\alpha_{CID[i]} \sim Normal(3,0.5)\\
+\beta_{CID[i]} \sim Normal(0,0.2)\\
+$$
+
+```{r}
+dlist.1 <- list(
+  T = d$total_tools,
+  P = d$P,
+  cid = d$contact_id,
+  N = nrow(d)
+)
+```
+
+```{r}
+code_m1.1 <- "
+data{
+  int N;
+  int T[N];
+}
+parameters{
+  real a;
+}
+model{
+  real lambda;
+  a ~ normal(3,0.5);
+  lambda = a;
+  lambda = exp(lambda);
+  T ~ poisson(lambda);
+}
+generated quantities{
+  vector[N] log_lik;
+  real lambda;
+  lambda = a;
+  lambda = exp(lambda);
+  for(i in 1:N){
+    log_lik[i] = poisson_lpmf(T[i] | lambda);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.1 <- stan(model_code=code_m1.1, data=dlist.1, chains=4, cores=4)
+precis(m.1.1)
+```
+```{r}
+head(d)
+```
+
+
+```{r}
+dlist.1 <- list(
+  T = d$total_tools,
+  P = standardize(log(d$population)),
+  cid = d$contact_id,
+  N = nrow(d)
+)
+dlist.1$N_cid = length(unique(d$contact_id))
+```
+
+```{r}
+code_m1.2 <- "
+data{
+  int N;
+  int N_cid;
+  int T[N];
+  vector[N] P;
+  int cid[N];
+}
+parameters{
+  vector[N_cid] a;
+  vector[N_cid] b;
+}
+model{
+  vector[N] lambda;
+  a ~ normal(3,0.5);
+  b ~ normal(0,0.2);
+  for(i in 1:N){
+    lambda[i] = a[cid[i]] + b[cid[i]]*P[i];
+    lambda[i] = exp(lambda[i]);
+  }
+  T ~ poisson(lambda);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] lambda;
+  for(i in 1:N){
+    lambda[i] = a[cid[i]] + b[cid[i]]*P[i];
+    lambda[i] = exp(lambda[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = poisson_lpmf(T[i] | lambda[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.2 <- stan(model_code=code_m1.2, data=dlist.1, chains=4, cores=4)
+precis(m.1.2,2, pars=c("a", "b"))
+```
+
+## Model comparison
+
+Before moving to the posterior predictive check, we take a quick look at the model comparison
+
+```{r}
+compare(m.1.1, m.1.2, func=WAIC)
+```
+
+```{r}
+compare(m.1.1, m.1.2, func=PSIS)
+```
+Two noteworthy things:
+
+  We see warnings of unreliable sampling
+  m1.1 has less free parameters but more effective number of parameters than m1.2
+
+Intuitively, the comparison said that model m1.1 has a higher penalty and less complexity than m1.2. It looks like a paradox. On one hand, the penalty term is set to reduce the overfitting risk. On the other hand, the larger effective number of parameters does not mean of an overfitting risk. If we plot the posterior predictive check for m1.1, there is a horizontal line
+
+The observation reminds us that the overfitting risk of a model has less to do with the number of parameters than with how the parameters are related to one another
+
+## Posterior predictive checks
+
+There are some highlights:
+
+  There are three highly influential points. The most one is Hawaii which has extreme population size, the most tools and a low contact with the others
+  The trend for societies with high contact is higher than the trend of societies with low contact when population size is low. It is reversed when population size is high. That patterns is because there are no high population size societies with high contact. Thus, the model has no idea where the trend for high contact societies goes at high population sizes. However, it is reasonable that a counter-factual Hawaii with the same population size but high contact should theoretically have at least as many tools as the real Hawaii
+
+These points encourage us to revise the statistical model
+
+```{r}
+post1.2$a[,1]
+```
+
+
+```{r}
+post1.2 <- extract.samples(m.1.2)
+k <- PSIS( m.1.2 , pointwise=TRUE )$k
+plot( dlist.1$P , dlist.1$T , xlab="log population (std)" , ylab="total tools" ,
+    col=rangi2 , pch=ifelse( dlist$cid==1 , 1 , 16 ) , lwd=2 ,
+    ylim=c(0,100) , cex=1+normalize(k), bty="l" )
+
+ns <- 100
+P_seq <- seq( from=-1.4 , to=3 , length.out=ns )
+# predictions for cid=1 (low contact)
+cid1 <-  1
+lambda <- matrix(0,nrow = nrow(post1.2$a), ncol =ns)
+for(i in 1:ns){lambda[,i] = exp(post1.2$a[,cid1] + post1.2$b[,cid1]*P_seq[i])}
+# lambda <- link( m1.2 , data=data.frame( P=P_seq , cid=1 ) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( P_seq , lmu , lty=2 , lwd=1.5 )
+shade( lci , P_seq , xpd=TRUE )
+# predictions for cid=2 (high contact)
+cid2 <- 2
+lambda <- matrix(0,nrow = nrow(post1.2$a), ncol = ns)
+for(i in 1:ns){lambda[,i] = exp(post1.2$a[,cid2] + post1.2$b[,cid2]*P_seq[i])}
+# lambda <- link( m1.2 , data=data.frame( P=P_seq , cid=2 ) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( P_seq , lmu , lty=1 , lwd=1.5 )
+shade( lci , P_seq , xpd=TRUE )
+```
+
+One more thing is that the statistical model shows no guarantee that the trend of the mean of tool kits will pass through the origin where the population size equals zero
+
+```{r}
+plot( d$population , d$total_tools , xlab="population" , ylab="total tools" ,
+    col=rangi2 , pch=ifelse( dlist$cid==1 , 1 , 16 ) , lwd=2 ,
+    ylim=c(0,100) , cex=1+normalize(k) , bty="l")
+ns <- 100
+P_seq <- seq( from=-5 , to=3 , length.out=ns )
+# 1.53 is sd of log(population)
+# 9 is mean of log(population)
+pop_seq <- exp( P_seq*1.53 + 9 )
+cid1 <-  1
+lambda <- matrix(0,nrow = nrow(post1.2$a), ncol =ns)
+for(i in 1:ns){lambda[,i] = exp(post1.2$a[,cid1] + post1.2$b[,cid1]*P_seq[i])}
+# lambda <- link( m1.2 , data=data.frame( P=P_seq , cid=1 ) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( pop_seq , lmu , lty=2 , lwd=1.5 )
+shade( lci , pop_seq , xpd=TRUE )
+cid2 <- 2
+lambda <- matrix(0,nrow = nrow(post1.2$a), ncol = ns)
+for(i in 1:ns){lambda[,i] = exp(post1.2$a[,cid2] + post1.2$b[,cid2]*P_seq[i])}
+# lambda <- link( m1.2 , data=data.frame( P=P_seq , cid=2 ) )
+lmu <- apply( lambda , 2 , mean )
+lci <- apply( lambda , 2 , PI )
+lines( pop_seq , lmu , lty=1 , lwd=1.5 )
+shade( lci , pop_seq , xpd=TRUE )
+```
+
+## Scientific models
+
+The above analyse encourages us to encode scientific knowledge and hypothetical causal effects to reconstruct the model. It'll be a dynamic model of the cultural evolution of tools which develop over time.
+
+The change in the expected number of tools in one time step is
+$$
+\Delta T = \alpha P^{\beta} - \gamma T
+$$
+
+The equilibrium number of tools T is
+$$
+\bar T = \frac{\alpha P^{\beta}}{\gamma}
+$$
+### Statistical models
+
+$$
+T_{i} \sim Poisson(\lambda_{i})\\
+\lambda_{i} = exp(\alpha_{CID[i]})*\frac{P^{\beta_{CID[i]}}}{g}\\
+\alpha_{CID[i]} \sim Normal(1,1)\\
+\beta_{CID[i]} \sim Exponential(1)\\
+g \sim Exponential(1)
+$$
+### Prior predictive checks
+
+```{r}
+set.seed(4)
+N <- 100
+a <- rnorm(N,1,1)
+b1 <- rexp(N,1)
+b2 <- rexp(N,5)
+g <- rexp(N,1)
+plot(NULL, xlim=c(0,300000), ylim=c(0,200), xlab="log population (std)", ylab="total tools")
+for(i in 1:100){
+  curve(exp(a[i])*x^b1[i]/g[i], from=min(d$population), to=max(d$population), add=TRUE)
+}
+
+plot(NULL, xlim=c(0,300000), ylim=c(0,200), xlab="log population (std)", ylab="total tools")
+for(i in 1:100){
+  curve(exp(a[i])*x^b2[i]/g[i], from=min(d$population), to=max(d$population), add=TRUE)
+}
+```
+### Fitting models
+
+```{r}
+dlist.2 <- list(
+  T = d$total_tools,
+  P = d$population,
+  cid = d$contact_id,
+  N = nrow(d),
+  N_cid = length(unique(d$contact_id))
+)
+```
+
+```{r}
+code_m1.3 <- "
+data{
+  int N;
+  int N_cid;
+  int cid[N];
+  int T[N];
+  vector[N] P;
+}
+parameters{
+  real<lower=0> g;
+  vector[N_cid] a;
+  vector<lower=0>[N_cid] b;
+}
+model{
+  vector[N] lambda;
+  g ~ exponential(1);
+  a ~ normal(1,1);
+  b ~ exponential(1);
+  for(i in 1:N){
+    lambda[i] = exp(a[cid[i]])*P[i]^b[cid[i]]/g;
+  }
+  T ~ poisson(lambda);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] lambda;
+  for(i in 1:N){
+    lambda[i] = exp(a[cid[i]])*P[i]^b[cid[i]]/g;
+  }
+  for(i in 1:N){
+    log_lik[i] = poisson_lpmf(T[i] | lambda[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.3 <- stan(model_code = code_m1.3, data = dlist.2, chains = 4, cores = 4)
+precis(m.1.3, 2, pars=c("g", "a", "b"))
+```
+
+
+```{r}
+code_m1.3b <- "
+data{
+  int N;
+  int N_cid;
+  int cid[N];
+  int T[N];
+  vector[N] P;
+}
+parameters{
+  real<lower=0> g;
+  vector[N_cid] a;
+  vector<lower=0>[N_cid] b;
+}
+model{
+  vector[N] lambda;
+  g ~ exponential(1);
+  a ~ normal(1,1);
+  b ~ exponential(5);
+  for(i in 1:N){
+    lambda[i] = exp(a[cid[i]])*P[i]^b[cid[i]]/g;
+  }
+  T ~ poisson(lambda);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] lambda;
+  for(i in 1:N){
+    lambda[i] = exp(a[cid[i]])*P[i]^b[cid[i]]/g;
+  }
+  for(i in 1:N){
+    log_lik[i] = poisson_lpmf(T[i] | lambda[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.3b <- stan(model_code = code_m1.3b, data = dlist.2, chains = 4, cores = 4)
+precis(m.1.3b, 2, pars=c("g", "a", "b"))
+```
+
+
+```{r}
+post1.3 <- extract.samples(m1.3)
+k <- PSIS(m1.3, pointwise = TRUE)$k
+plot(x=dlist.2$P, y=dlist.2$T, 
+     xlab="Population",
+     ylab="Total tools",
+     col=rangi2, pch=ifelse(dlist.2$cid==1,1,16), lwd=2,
+     cex=1+normalize(k), bty="l")
+
+P_seq <- seq(from=min(dlist.2$P), to=max(dlist.2$P), length.out=100)
+
+cid1 <- 1
+lambda_lc <- matrix(0, nrow=nrow(post1.3$a), ncol=100)
+for(i in 1:100){lambda_lc[,i] = exp(post1.3$a[,cid1])*P_seq[i]^post1.3$b[,cid1]/post1.3$g}
+# lambda_lc <- link(m1.3, data=data.frame(P=P_seq, cid=1))
+lc_mu <- apply(lambda_lc, 2, mean)
+lc_pi <- apply(lambda_lc, 2, PI, prob=0.89)
+lines(x=P_seq, y=lc_mu, lty=1, lwd=1.5)
+shade(lc_pi, P_seq)
+
+cid2 <- 2
+lambda_hc <- matrix(0, nrow=nrow(post1.3$a), ncol=100)
+for(i in 1:100){lambda_hc[,i] = exp(post1.3$a[,cid2])*P_seq[i]^post1.3$b[,cid2]/post1.3$g}
+# lambda_hc <- link(m1.3, data=data.frame(P=P_seq, cid=2))
+hc_mu <- apply(lambda_hc, 2, mean)
+hc_pi <- apply(lambda_hc, 2, PI, prob=0.89)
+lines(x=P_seq, y=hc_mu, lty=2, lwd=1.5)
+shade(hc_pi, P_seq)
+```
+
+We get a forward step as the model that encodes science knowledge does a better job than the previous ones. The trend for societies with high contact is reasonably higher than the trend for societies with low contact
+
+Although we get a reasonable trend, using a binary contact predictor as a proxy for possible exchange among societies is unsatisfying because
+
+  We should know which other societies each had contact with
+  The total number of tools for each society are truly not independent of one another
+  Closer islands may share unmeasured geographic features
+
+Therefore, we're going to expand the model and apply a general approach known as *Gaussian Process Regression*
+
+# 2. Gaussian Process Regression
+
+## Load data
+
+We start by loading the data inspecting the geographic distance matrix
+
+```{r}
+data("islandsDistMatrix")
+Dmat <- islandsDistMatrix
+colnames(Dmat) <- c("Ml","Ti","SC","Ya","Fi","Tr","Ch","Mn","To","Ha")
+round(Dmat,1)
+```
+
+## Statistical models
+
+We'll use these distance as a measure of similarity in technology exposure. That allows us to estimate varying intercepts for each society that account for non-independence in tools as a function of their geographical similarity
+
+$$
+T_{i} \sim Poisson(\lambda_{i})\\
+\lambda_{i} = \frac{exp(k_{SOCIETY[i]})\alpha P^{\beta}_{i}}{\gamma}\\
+
+\left( \begin{array}{c}
+k_{1}\\k_{2}\\k_{3}\\...\\k_{10}\end{array} \right) \sim MVNormal(\left( \begin{array}{c}
+0\\0\\0\\...\\0\end{array} \right),K)\\
+K_{ij}=\eta^{2}exp(-\rho^{2}D^{2}_{ij}) + \delta_{ij}\sigma^{2}\\
+\eta^{2} \sim Exponential(2)\\
+\rho^{2} \sim Exponential(0.5)
+$$
+In compared with the previous model, we add k as a varying intercept for each societies. It will be estimated in light of geographic distance, not distinct category membership
+
+```{r}
+d$society <- 1:10
+```
+
+```{r}
+dlist.3 <- list(
+  T = d$total_tools,
+  P = d$population,
+  society = d$society,
+  Dmat = islandsDistMatrix,
+  N_society = 10,
+  N = nrow(d)
+)
+```
+
+```{r}
+dlist.3$N
+```
+
+
+```{r}
+code_m2.1 <- "
+functions{
+  matrix cov_GPL2(matrix x, real sq_alpha, real sq_rho, real delta){
+    int N = dims(x)[1];
+    matrix[N,N] K;
+    for(i in 1:N){
+      K[i,i] = sq_alpha + delta;
+      for(j in (i+1):N){
+        K[i,j] = sq_alpha*exp(-sq_rho * square(x[i,j]));
+        K[j,i] = K[i,j];
+      }
+    }
+    K[N, N] = sq_alpha + delta;
+    return K;
+  }
+}
+data{
+  int N;
+  int N_society;
+  matrix[N_society, N_society] Dmat;
+  int T[N];
+  vector[N] P;
+  int society[N];
+}
+parameters{
+  real<lower=0> g;
+  real<lower=0> b;
+  real<lower=0> a;
+  vector[N] k;
+  real<lower=0> etasq;
+  real<lower=0> rhosq;
+}
+model{
+  vector[N] lambda;
+  matrix[N, N] SIGMA;
+  rhosq ~ exponential(0.5);
+  etasq ~ exponential(2);
+  SIGMA = cov_GPL2(Dmat, etasq, rhosq, 0.01);
+  k ~ multi_normal(rep_vector(0,N), SIGMA);
+  a ~ exponential(1);
+  b ~ exponential(1);
+  g ~ exponential(1);
+  for(i in 1:N){
+    lambda[i] = exp(k[society[i]]) * (a * P[i]^b/g);
+  }
+  T ~ poisson(lambda);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] lambda;
+  matrix[N, N] SIGMA;
+  SIGMA = cov_GPL2(Dmat, etasq, rhosq, 0.01);
+  for(i in 1:N){
+    lambda[i] = exp(k[society[i]]) * (a * P[i]^b/g);
+  }
+  for(i in 1:N){
+    log_lik[i] = poisson_lpmf(T[i] | lambda[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.2.1 <- stan(model_code=code_m2.1, data=dlist.3, chains=4, cores=4)
+precis(m.2.1,3, pars=c("g", "b", "a", "k"))
+```
+
+The coefficient b is very much as it was in m1.3. This suggests that it's hard to explain all of the association between tool counts and population as a side effect of geographic contact
+
+## Reparameterized models
+
+```{r}
+code_m2.1nc <- "
+functions{
+  matrix cov_GPL2(matrix x, real sq_alpha, real sq_rho, real delta){
+    int N = dims(x)[1];
+    matrix[N,N] K;
+    for(i in 1:N){
+      K[i,i] = sq_alpha + delta;
+      for(j in (i+1):N){
+        K[i,j] = sq_alpha*exp(-sq_rho * square(x[i,j]));
+        K[j,i] = K[i,j];
+      }
+    }
+    K[N, N] = sq_alpha + delta;
+    return K;
+  }
+}
+data{
+  int N;
+  int N_society;
+  matrix[N_society, N_society] Dmat;
+  int T[N];
+  vector[N] P;
+  int society[N];
+}
+parameters{
+  real<lower=0> g;
+  real<lower=0> b;
+  real<lower=0> a;
+  vector[N] z;
+  real<lower=0> etasq;
+  real<lower=0> rhosq;
+}
+transformed parameters{
+  vector[N] k;
+  matrix[N, N] L_SIGMA;
+  matrix[N, N] SIGMA;
+  SIGMA = cov_GPL2(Dmat, etasq, rhosq, 0.01);
+  L_SIGMA = cholesky_decompose(SIGMA);
+  k = L_SIGMA*z;
+}
+model{
+  vector[N] lambda;
+  
+  rhosq ~ exponential(1);
+  etasq ~ exponential(1);
+  
+  z ~ normal(0,1);
+  a ~ exponential(1);
+  b ~ exponential(1);
+  g ~ exponential(1);
+  for(i in 1:N){
+    lambda[i] = exp(k[society[i]]) * (a * P[i]^b/g);
+  }
+  T ~ poisson(lambda);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] lambda;
+  for(i in 1:N){
+    lambda[i] = exp(k[society[i]]) * (a * P[i]^b/g);
+  }
+  for(i in 1:N){
+    log_lik[i] = poisson_lpmf(T[i] | lambda[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.2.1nc <- stan(model_code=code_m2.1nc, data=dlist.3, chains=4, cores=4)
+precis(m.2.1nc,3, pars=c("g", "b", "a", "k"))
+```
+
+
+```{r}
+precis.2.1c <- precis(m.2.1, 3)
+precis.2.1nc <- precis(m.2.1nc,3)
+pars <- c( paste("k[",1:10,"]",sep=""),"a","b","g","etasq","rhosq")
+neff_table <- cbind(precis.2.1c[pars,"n_eff"] , precis.2.1nc[pars,"n_eff"] )
+plot( neff_table , xlim=range(neff_table) , ylim=range(neff_table) ,
+    xlab="n_eff (centered)" , ylab="n_eff (non-centered)" , lwd=2 )
+abline( a=0 , b=1 , lty=2 )
+```
+
+## Posterior predictive checks
+
+```{r}
+post <- extract.samples(m.2.1)
+```
+
+```{r}
+plot(NULL, xlim=c(0,10), ylim=c(0,2),
+     xlab="distance (thousand km)", ylab="covariance")
+x_seq <- seq(from=0, to=10, length.out=100)
+pmcov <- sapply(X=x_seq, FUN=function(x){post$etasq*exp(-post$rhosq*x^2)})
+pmcov_mu <- apply(pmcov,2,mean)
+lines(x_seq, pmcov_mu, lwd=2, col=col.alpha(rangi2,1))
+
+for(i in 1:50){
+  curve(post$etasq[i]*exp(-post$rhosq[i]*x^2),add=TRUE,col=col.alpha("black",0.1))
+}
+```
+
+We'll construct a correlation matrix between societies
+
+```{r}
+K <- matrix(0,nrow=10,ncol=10)
+for(i in 1:10){
+  for(j in 1:10){
+    K[i,j] <- median(post$etasq)*exp(-median(post$rhosq)*islandsDistMatrix[i,j]^2)
+  }
+}
+diag(K) <- median(post$etasq) + 0.01
+```
+
+```{r}
+Rho <- round(cov2cor(K),2)
+colnames(Rho) <- c("Ml","Ti","SC","Ya","Fi","Tr","Ch","Mn","To","Ha")
+rownames(Rho) <- colnames(Rho)
+Rho
+```
+
+```{r}
+psize <- d$logpop/max(d$logpop)
+psize <- exp(psize*1.5)-2
+```
+
+
+```{r}
+plot(d$lon2, d$lat,xlab="longtitude",ylab="latitude",
+     col=rangi2,cex=psize,pch=16,xlim=c(-50,30),bty="l")
+labels <- as.character(d$culture)
+text(d$lon2,d$lat,labels=labels,cex=0.7,pos=c(2,4,3,3,4,1,3,2,4,2))
+for(i in 1:10){
+  for(j in 1:10){
+    if(i<j){
+      lines(x=c(d$lon2[i],d$lon2[j]),y=c(d$lat[i],d$lat[j]),
+            lwd=2, col=col.alpha("black",alpha=Rho[i,j]^2))
+    }
+  }
+}
+```
+
+
+```{r}
+# Compare the simultaneous relationship between tools and log population
+logpop.seq <- seq(from=6,to=14,length.out=30)
+lambda <- sapply(logpop.seq,function(lp){
+  exp(post$a + post$b*lp)
+})
+lambda.median <- apply(lambda,2,median)
+lambda.pi <- apply(lambda,2,PI,prob=0.8)
+```
+
+
+```{r}
+plot(NULL,xlim=range(d$logpop),ylim=range(d$total_tools),
+     xlab="log population", ylab="total tools",bty="l")
+points(d$logpop,d$total_tools,col=rangi2,cex=psize,pch=16)
+text(d$logpop,d$total_tools,labels=labels,cex=0.7,pos=c(4,3,4,2,2,1,4,4,4,2))
+
+lines(logpop.seq, lambda.median, lty=2)
+lines(logpop.seq, lambda.pi[1,], lty=2)
+lines(logpop.seq, lambda.pi[2,], lty=2)
+for(i in 1:10){
+  for(j in 1:10){
+    if(i<j){
+      lines(x=c(d$logpop[i],d$logpop[j]),y=c(d$total_tools[i],d$total_tools[j]),
+            lwd=2, col=col.alpha("black",alpha=Rho[i,j]^2))
+    }
+  }
+}
+```
+
+
+```{r}
+```
+
