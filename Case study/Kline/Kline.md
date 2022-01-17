@@ -72,12 +72,7 @@ d$contact_id <- ifelse(d$contact=="high",2,1)
 
 ## Initial statistical models
 
-$$
-T\_{i} \\sim Poisson(\\lambda\_{i})\\\\
-log(\\lambda\_{i}) = \\alpha\_{CID\[i\]} + \\beta\_{CID\[i\]}log(P\_{i})\\\\
-\\alpha\_{CID\[i\]} \\sim \\\\
-\\beta\_{CID\[i\]} \\sim \\\\
-$$
+![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Kline/pictures/initial%20model%201.1.png)
 
 ## Define priors
 
@@ -174,12 +169,7 @@ for ( i in 1:N ) lines( exp(x_seq) , lambda[i,] , col=grau() , lwd=1.5 )
 
 ## Updated statistical models
 
-$$
-T\_{i} \\sim Poisson(\\lambda\_{i})\\\\
-log(\\lambda\_{i}) = \\alpha\_{CID\[i\]} + \\beta\_{CID\[i\]}log(P\_{i})\\\\
-\\alpha\_{CID\[i\]} \\sim Normal(3,0.5)\\\\
-\\beta\_{CID\[i\]} \\sim Normal(0,0.2)\\\\
-$$
+![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Kline/pictures/updated%20model%201.1.png)
 
 ``` r
 dlist.1 <- list(
@@ -221,28 +211,6 @@ generated quantities{
 ``` r
 m.1.1 <- stan(model_code=code_m1.1, data=dlist.1, chains=4, cores=4)
 ```
-
-    ## Running /Library/Frameworks/R.framework/Resources/bin/R CMD SHLIB foo.c
-    ## clang -mmacosx-version-min=10.13 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/Rcpp/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/unsupported"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/BH/include" -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/src/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppParallel/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/rstan/include" -DEIGEN_NO_DEBUG  -DBOOST_DISABLE_ASSERTS  -DBOOST_PENDING_INTEGER_LOG2_HPP  -DSTAN_THREADS  -DBOOST_NO_AUTO_PTR  -include '/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp'  -D_REENTRANT -DRCPP_PARALLEL_USE_TBB=1   -I/usr/local/include   -fPIC  -Wall -g -O2  -c foo.c -o foo.o
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:88:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:1: error: unknown type name 'namespace'
-    ## namespace Eigen {
-    ## ^
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:16: error: expected ';' after top level declarator
-    ## namespace Eigen {
-    ##                ^
-    ##                ;
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:96:10: fatal error: 'complex' file not found
-    ## #include <complex>
-    ##          ^~~~~~~~~
-    ## 3 errors generated.
-    ## make: *** [foo.o] Error 1
 
 ``` r
 precis(m.1.1)
@@ -322,28 +290,6 @@ generated quantities{
 m.1.2 <- stan(model_code=code_m1.2, data=dlist.1, chains=4, cores=4)
 ```
 
-    ## Running /Library/Frameworks/R.framework/Resources/bin/R CMD SHLIB foo.c
-    ## clang -mmacosx-version-min=10.13 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/Rcpp/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/unsupported"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/BH/include" -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/src/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppParallel/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/rstan/include" -DEIGEN_NO_DEBUG  -DBOOST_DISABLE_ASSERTS  -DBOOST_PENDING_INTEGER_LOG2_HPP  -DSTAN_THREADS  -DBOOST_NO_AUTO_PTR  -include '/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp'  -D_REENTRANT -DRCPP_PARALLEL_USE_TBB=1   -I/usr/local/include   -fPIC  -Wall -g -O2  -c foo.c -o foo.o
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:88:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:1: error: unknown type name 'namespace'
-    ## namespace Eigen {
-    ## ^
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:16: error: expected ';' after top level declarator
-    ## namespace Eigen {
-    ##                ^
-    ##                ;
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:96:10: fatal error: 'complex' file not found
-    ## #include <complex>
-    ##          ^~~~~~~~~
-    ## 3 errors generated.
-    ## make: *** [foo.o] Error 1
-
 ``` r
 precis(m.1.2,2, pars=c("a", "b"))
 ```
@@ -377,10 +323,10 @@ compare(m.1.1, m.1.2, func=PSIS)
 
 Two noteworthy things:
 
-We see warnings of unreliable sampling m1.1 has less free parameters but
+* We see warnings of unreliable sampling m1.1 has less free parameters but
 more effective number of parameters than m1.2
 
-Intuitively, the comparison said that model m1.1 has a higher penalty
+* Intuitively, the comparison said that model m1.1 has a higher penalty
 and less complexity than m1.2. It looks like a paradox. On one hand, the
 penalty term is set to reduce the overfitting risk. On the other hand,
 the larger effective number of parameters does not mean of an
@@ -395,9 +341,11 @@ related to one another
 
 There are some highlights:
 
-There are three highly influential points. The most one is Hawaii which
+* There are three highly influential points. The most one is Hawaii which
 has extreme population size, the most tools and a low contact with the
-others The trend for societies with high contact is higher than the
+others 
+
+* The trend for societies with high contact is higher than the
 trend of societies with low contact when population size is low. It is
 reversed when population size is high. That patterns is because there
 are no high population size societies with high contact. Thus, the model
@@ -479,21 +427,15 @@ hypothetical causal effects to reconstruct the model. It’ll be a dynamic
 model of the cultural evolution of tools which develop over time.
 
 The change in the expected number of tools in one time step is
-*Δ**T* = *α**P*<sup>*β*</sup> − *γ**T*
+![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Kline/pictures/delta%20T.png)
 
 The equilibrium number of tools T is
-$$
-\\bar T = \\frac{\\alpha P^{\\beta}}{\\gamma}
-$$
+
+![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Kline/pictures/bar%20T.png)
+
 ### Statistical models
 
-$$
-T\_{i} \\sim Poisson(\\lambda\_{i})\\\\
-\\lambda\_{i} = exp(\\alpha\_{CID\[i\]})\*\\frac{P^{\\beta\_{CID\[i\]}}}{g}\\\\
-\\alpha\_{CID\[i\]} \\sim Normal(1,1)\\\\
-\\beta\_{CID\[i\]} \\sim Exponential(1)\\\\
-g \\sim Exponential(1)
-$$
+![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Kline/pictures/model%201.3.png)
 
 ### Prior predictive checks
 
@@ -573,28 +515,6 @@ generated quantities{
 m.1.3 <- stan(model_code = code_m1.3, data = dlist.2, chains = 4, cores = 4)
 ```
 
-    ## Running /Library/Frameworks/R.framework/Resources/bin/R CMD SHLIB foo.c
-    ## clang -mmacosx-version-min=10.13 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/Rcpp/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/unsupported"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/BH/include" -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/src/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppParallel/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/rstan/include" -DEIGEN_NO_DEBUG  -DBOOST_DISABLE_ASSERTS  -DBOOST_PENDING_INTEGER_LOG2_HPP  -DSTAN_THREADS  -DBOOST_NO_AUTO_PTR  -include '/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp'  -D_REENTRANT -DRCPP_PARALLEL_USE_TBB=1   -I/usr/local/include   -fPIC  -Wall -g -O2  -c foo.c -o foo.o
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:88:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:1: error: unknown type name 'namespace'
-    ## namespace Eigen {
-    ## ^
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:16: error: expected ';' after top level declarator
-    ## namespace Eigen {
-    ##                ^
-    ##                ;
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:96:10: fatal error: 'complex' file not found
-    ## #include <complex>
-    ##          ^~~~~~~~~
-    ## 3 errors generated.
-    ## make: *** [foo.o] Error 1
-
 ``` r
 precis(m.1.3, 2, pars=c("g", "a", "b"))
 ```
@@ -646,28 +566,6 @@ generated quantities{
 ``` r
 m.1.3b <- stan(model_code = code_m1.3b, data = dlist.2, chains = 4, cores = 4)
 ```
-
-    ## Running /Library/Frameworks/R.framework/Resources/bin/R CMD SHLIB foo.c
-    ## clang -mmacosx-version-min=10.13 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/Rcpp/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/unsupported"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/BH/include" -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/src/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppParallel/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/rstan/include" -DEIGEN_NO_DEBUG  -DBOOST_DISABLE_ASSERTS  -DBOOST_PENDING_INTEGER_LOG2_HPP  -DSTAN_THREADS  -DBOOST_NO_AUTO_PTR  -include '/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp'  -D_REENTRANT -DRCPP_PARALLEL_USE_TBB=1   -I/usr/local/include   -fPIC  -Wall -g -O2  -c foo.c -o foo.o
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:88:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:1: error: unknown type name 'namespace'
-    ## namespace Eigen {
-    ## ^
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:16: error: expected ';' after top level declarator
-    ## namespace Eigen {
-    ##                ^
-    ##                ;
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:96:10: fatal error: 'complex' file not found
-    ## #include <complex>
-    ##          ^~~~~~~~~
-    ## 3 errors generated.
-    ## make: *** [foo.o] Error 1
 
 ``` r
 precis(m.1.3b, 2, pars=c("g", "a", "b"))
@@ -759,13 +657,9 @@ exposure. That allows us to estimate varying intercepts for each society
 that account for non-independence in tools as a function of their
 geographical similarity
 
-$$ T\_{i} Poisson(*{i})\\ *{i} = \\
+![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Kline/pictures/model%202.1.png)
 
-(
-) MVNormal((
-),K)\\ K\_{ij}=<sup>{2}exp(-</sup>{2}D<sup>{2}*{ij}) + *{ij}</sup>{2}\\
-^{2} Exponential(2)\\ ^{2} Exponential(0.5) $$ In compared with the
-previous model, we add k as a varying intercept for each societies. It
+In compared with the previous model, we add k as a varying intercept for each societies. It
 will be estimated in light of geographic distance, not distinct category
 membership
 
@@ -850,28 +744,6 @@ generated quantities{
 ``` r
 m.2.1 <- stan(model_code=code_m2.1, data=dlist.3, chains=4, cores=4)
 ```
-
-    ## Running /Library/Frameworks/R.framework/Resources/bin/R CMD SHLIB foo.c
-    ## clang -mmacosx-version-min=10.13 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/Rcpp/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/unsupported"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/BH/include" -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/src/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppParallel/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/rstan/include" -DEIGEN_NO_DEBUG  -DBOOST_DISABLE_ASSERTS  -DBOOST_PENDING_INTEGER_LOG2_HPP  -DSTAN_THREADS  -DBOOST_NO_AUTO_PTR  -include '/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp'  -D_REENTRANT -DRCPP_PARALLEL_USE_TBB=1   -I/usr/local/include   -fPIC  -Wall -g -O2  -c foo.c -o foo.o
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:88:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:1: error: unknown type name 'namespace'
-    ## namespace Eigen {
-    ## ^
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:16: error: expected ';' after top level declarator
-    ## namespace Eigen {
-    ##                ^
-    ##                ;
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:96:10: fatal error: 'complex' file not found
-    ## #include <complex>
-    ##          ^~~~~~~~~
-    ## 3 errors generated.
-    ## make: *** [foo.o] Error 1
 
 ``` r
 precis(m.2.1,3, pars=c("g", "b", "a", "k"))
@@ -970,28 +842,6 @@ generated quantities{
 ``` r
 m.2.1nc <- stan(model_code=code_m2.1nc, data=dlist.3, chains=4, cores=4)
 ```
-
-    ## Running /Library/Frameworks/R.framework/Resources/bin/R CMD SHLIB foo.c
-    ## clang -mmacosx-version-min=10.13 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/Rcpp/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/unsupported"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/BH/include" -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/src/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppParallel/include/"  -I"/Library/Frameworks/R.framework/Versions/4.1/Resources/library/rstan/include" -DEIGEN_NO_DEBUG  -DBOOST_DISABLE_ASSERTS  -DBOOST_PENDING_INTEGER_LOG2_HPP  -DSTAN_THREADS  -DBOOST_NO_AUTO_PTR  -include '/Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp'  -D_REENTRANT -DRCPP_PARALLEL_USE_TBB=1   -I/usr/local/include   -fPIC  -Wall -g -O2  -c foo.c -o foo.o
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:88:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:1: error: unknown type name 'namespace'
-    ## namespace Eigen {
-    ## ^
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/src/Core/util/Macros.h:628:16: error: expected ';' after top level declarator
-    ## namespace Eigen {
-    ##                ^
-    ##                ;
-    ## In file included from <built-in>:1:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/StanHeaders/include/stan/math/prim/mat/fun/Eigen.hpp:13:
-    ## In file included from /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Dense:1:
-    ## /Library/Frameworks/R.framework/Versions/4.1/Resources/library/RcppEigen/include/Eigen/Core:96:10: fatal error: 'complex' file not found
-    ## #include <complex>
-    ##          ^~~~~~~~~
-    ## 3 errors generated.
-    ## make: *** [foo.o] Error 1
 
 ``` r
 precis(m.2.1nc,3, pars=c("g", "b", "a", "k"))
