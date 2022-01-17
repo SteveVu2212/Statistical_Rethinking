@@ -545,7 +545,7 @@ mtext( "posterior proportions\n" )
 When adding a partner, the model expects almost no change in decisions
 of focal chimpanzees
 
-##1.2 Models without interaction effects
+## 1.2 Models without interaction effects
 
 ![](https://github.com/SteveVu2212/Statistical_Rethinking/blob/main/Case%20study/Chimpanzees/pictures/model%201.2.png)
 
