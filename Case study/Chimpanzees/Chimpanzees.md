@@ -40,11 +40,13 @@ data("chimpanzees")
 d <- chimpanzees
 ```
 
-There are four combinations of prosoc_left and condition: prosoc_left =
-0 and condition = 0 prosoc_left = 1 and condition = 0 prosoc_left = 0
-and condition = 1 prosoc_left = 1 and condition = 1
+There are four combinations of prosoc_left and condition:
+* prosoc_left = 0 and condition = 0
+* prosoc_left = 1 and condition = 0
+* prosoc_left = 0 and condition = 1
+* prosoc_left = 1 and condition = 1
 
-We’re going to build an index variable containing the values 1 through 4
+We’re going to build an index variable containing the values 1 through 4 
 to index the combinations
 
 ``` r
@@ -791,7 +793,7 @@ precis(m.1.5,2,pars=c("a","b"))
     ## b[3] -0.39000349 0.2628482 -0.8157572  0.02018669  828.4908 1.004072
     ## b[4]  0.06491138 0.2641361 -0.3589710  0.47233161  828.0308 1.005174
 
-### Posterior predictive check
+### Posterior predictive checks
 
 ``` r
 post.1.5 <- extract.samples(m.1.5)
