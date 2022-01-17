@@ -1,0 +1,1140 @@
+---
+title: "Chimpanzees"
+output: github_document
+---
+# Introduction
+
+The data comes from an experiment aimed at evaluating the prosocial tendencies of chimpanzees. The research question is whether a focal chimpanzee chooses the prosocial option more often when another animal is present
+
+# Instalation
+
+```{r}
+rm(list=ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(MASS)
+library(rstan)
+library(shape)
+library(tidyr)
+require(visdat)
+library(ggplot2)
+library(dagitty)
+library(gtools)
+library(ellipse)
+library(tidyverse)
+library(rethinking)
+```
+
+```{r}
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+# Load data
+
+```{r}
+data("chimpanzees")
+d <- chimpanzees
+```
+
+There are four combinations of prosoc_left and condition:
+  prosoc_left = 0 and condition = 0
+  prosoc_left = 1 and condition = 0
+  prosoc_left = 0 and condition = 1
+  prosoc_left = 1 and condition = 1
+
+We're going to build an index variable containing the values 1 through 4 to index the combinations
+
+```{r}
+d$treatment <- 1 + d$prosoc_left + 2*d$condition
+```
+
+
+```{r}
+xtabs(~ treatment + prosoc_left + condition, d)
+```
+
+# 1. Logistic regression
+## 1.1 Models with interaction effects
+### Initial statistical models
+
+$$
+L_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \alpha_{ACTOR[i]} + \beta_{TREATMENT[i]}\\
+\alpha_{ACTOR[i]} \sim \\
+\beta_{TREATMENT[i]} \sim \\
+$$
+
+Before moving to the prior predictive check, it's worth noting that the model considers the interaction effect between the location of prosocial option and the presence of a partner. The interaction is hidden by the treatment
+
+### Prior predictive checks
+
+We need to determine the priors for these parameters. Let's start with alpha first by considering a linear model below
+
+$$
+L_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \alpha\\
+\alpha \sim Normal(0,w)
+$$
+
+We will test the distribution of p given a weak and a strong prior of alpha
+
+```{r}
+dlist <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  treatment = as.integer(d$treatment),
+  N = nrow(d)
+)
+```
+
+
+```{r}
+code_m1.1a <- "
+data{
+  int N;
+  int pulled_left[N];
+}
+parameters{
+  real a;
+}
+model{
+  real p;
+  a ~ normal(0,10);
+  p = a;
+  p = inv_logit(p);
+  pulled_left ~ binomial(1,p);
+}
+generated quantities{
+  real p;
+  vector[N] log_lik;
+  p = a;
+  p = inv_logit(p);
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1 , p);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.1a <- stan(model_code=code_m1.1a, data=dlist, chains=4, cores=4)
+precis(m.1.1a)
+```
+
+```{r}
+code_m1.1b <- "
+data{
+  int N;
+  int pulled_left[N];
+}
+parameters{
+  real a;
+}
+model{
+  real p;
+  a ~ normal(0,1.5);
+  p = a;
+  p = inv_logit(p);
+  pulled_left ~ binomial(1,p);
+}
+generated quantities{
+  real p;
+  vector[N] log_lik;
+  p = a;
+  p = inv_logit(p);
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1 , p);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.1b <- stan(model_code=code_m1.1b, data=dlist, chains=4, cores=4)
+precis(m.1.1b)
+```
+
+```{r}
+set.seed(1)
+p.1.1a <- inv_logit(rnorm(1e4,0,10))
+p.1.1b <- inv_logit(rnorm(1e4,0,1.5))
+```
+
+
+```{r}
+dens(p.1.1a, adj=0.1, ylab="Density", xlab="prior prob pull left")
+text(0.2,10,"a ~ dnorm(0,10)")
+dens(p.1.1b, adj=0.1, add=TRUE, col=col.alpha("blue",0.7))
+text(0.3,3,"a ~ dnorm(0,1.5)", col=col.alpha("blue",0.7))
+```
+
+The point is that a flat prior of alpha pushes the probability toward two extreme values of 0 and 1. In other words, a flat prior in the logit space is not a flat prior in the outcome probability space. Thus, we're going to use the Normal(0,1.5) prior for alpha
+
+Let's determine the prior of beta. Similarly, we also test the prediction of two priors of beta given the model below
+
+$$
+L_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \alpha + \beta_{TREATMENT[i]}\\
+\alpha \sim Normal(0,1.5)\\
+\beta_{k} \sim Normal(0,w)
+$$
+
+```{r}
+dlist <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  treatment = as.integer(d$treatment),
+  N = nrow(d)
+)
+```
+
+
+```{r}
+code_m1.2a <- "
+data{
+  int N;
+  int pulled_left[N];
+  int treatment[N];
+}
+parameters{
+  real a;
+  vector[4] b;
+}
+model{
+  vector[N] p;
+  a ~ normal(0,1.5);
+  b ~ normal(0,10);
+  for(i in 1:N){
+    p[i] = a + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  pulled_left ~ binomial(1, p);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] p;
+  for(i in 1:N){
+    p[i] = a + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1, p[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.2a <- stan(model_code=code_m1.2a, data=dlist, chains=4, cores=4)
+precis(m.1.2a,2,pars=c("a", "b"))
+```
+
+
+```{r}
+code_m1.2b <- "
+data{
+  int N;
+  int pulled_left[N];
+  int treatment[N];
+}
+parameters{
+  real a;
+  vector[4] b;
+}
+model{
+  vector[N] p;
+  a ~ normal(0,1.5);
+  b ~ normal(0,0.5);
+  for(i in 1:N){
+    p[i] = a + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  pulled_left ~ binomial(1, p);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] p;
+  for(i in 1:N){
+    p[i] = a + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1, p[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.2b <- stan(model_code=code_m1.2b, data=dlist, chains=4, cores=4)
+precis(m.1.2b,2,pars=c("a", "b"))
+```
+
+We will plot the absolute prior difference between the first two treatments
+
+```{r}
+set.seed(2)
+b1 <- matrix(0,nrow=1e4,ncol=4)
+for(i in 1:4){b1[,i] = rnorm(1e4,0,0.5)}
+
+b2 <- matrix(0,nrow=1e4,ncol=4)
+for(i in 1:4){b2[,i] = rnorm(1e4,0,10)}
+
+a <- rnorm(1e4,0,1.5)
+
+p1 <- matrix(0,nrow=1e4,ncol=4)
+for(i in 1:4){p1[,i] = inv_logit(a + b1[,i])}
+
+p2 <- matrix(0,nrow=1e4,ncol=4)
+for(i in 1:4){p2[,i] = inv_logit(a + b2[,i])}
+```
+
+
+```{r}
+dens(abs(p2[,1] - p2[,2]), adj=0.1, xlab="prior diff between treatments", ylab="Density")
+text(0.8,10,"b ~ dnorm(0,10)")
+dens(abs(p1[,1] - p1[,2]), adj=0.1, add=TRUE, col=rangi2)
+text(0.3,5,"b ~ dnorm(0,0.5)",col=rangi2)
+```
+
+Similar to the case of alpha, a flat prior of beta forces the prior probability to pile up on zero and one. Thus, we will employ the Normal(0,0.5) prior for beta
+
+### Updated statistical models
+
+$$
+L_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \alpha_{ACTOR[i]} + \beta_{TREATMENT[i]}\\
+\alpha_{ACTOR[i]} \sim Normal(0,1.5)\\
+\beta_{TREATMENT[i]} \sim Normal(0,0.5)\\
+$$
+
+```{r}
+dlist <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  treatment = as.integer(d$treatment),
+  N = nrow(d),
+  N_actor = length(unique(d$actor)),
+  N_treatment = length(unique(d$treatment))
+)
+```
+
+
+```{r}
+code_m1.3 <- "
+data{
+  int N;
+  int N_actor;
+  int N_treatment;
+  int pulled_left[N];
+  int treatment[N];
+  int actor[N];
+}
+parameters{
+  vector[N_treatment] b;
+  vector[N_actor] a;
+}
+model{
+  vector[N] p;
+  a ~ normal(0,1.5);
+  b ~ normal(0,0.5);
+  for(i in 1:N){
+    p[i] = a[actor[i]] + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  pulled_left ~ binomial(1, p);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] p;
+  for(i in 1:N){
+    p[i] = a[actor[i]] + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1, p[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.3 <- stan(model_code=code_m1.3, data=dlist, chains=4, cores=4)
+precis(m.1.3,2, pars=c("a", "b"))
+```
+
+### Posterior predictive checks
+
+```{r}
+post.1.3 <- extract.samples(m.1.3)
+```
+
+The chart below shows us the tendency of each individual to pull the left lever. Individuals #2 and #7 have strong preference of pulling left. Individuals #1,3,4, and 5 have the opposite preference
+
+```{r}
+p_left <- inv_logit(post.1.3$a)
+plot(precis(as.data.frame(p_left)), xlim=c(0,1))
+```
+
+We're going to extract the information about difference in focal chimpanzees' actions in treatments. We need to calculate the contrasts between the no-partner and partner treatments
+
+There isn't any compelling evidence of prosocial choice in the experiment
+
+```{r}
+diffs <- list(
+    db13 = post.1.3$b[,1] - post.1.3$b[,3],
+    db24 = post.1.3$b[,2] - post.1.3$b[,4] )
+plot( precis(diffs) )
+```
+
+To go deeply, we'll plot the proportions of left pulls for each actor in each treatment. There are two plots, one for the original data and one for the posterior predictions
+
+```{r}
+pl <- by(data=d$pulled_left, INDICES=list(d$actor, d$treatment),FUN=mean)
+pl[7,]
+```
+
+```{r}
+plot(NULL, xlim=c(1,28),  ylim=c(0,1),xlab="",
+     ylab="proportion left lever",  xaxt="n", yaxt="n")
+axis(side=2,at=c(0,0.5,1), labels=c(0,0.5,1))
+abline(h=0.5, lty=2)
+
+for(i in 1:7){abline(v=(i-1)*4+4.5, lwd=0.5)}
+for(i in 1:7){text(x=(i-1)*4+2.5,y=1.1,concat("actor ",i), xpd=TRUE)}
+
+# points(x=1:28,y=t(pl),pch=16, col="white",cex=1.7)
+points(x=1:28,y=t(pl),pch=c(1,1,16,16), col=rangi2, lwd=2)
+for(j in (1:7)[-2]){
+  lines( (j-1)*4+c(1,3) , pl[j,c(1,3)] , lwd=2 , col=rangi2 )
+  lines( (j-1)*4+c(2,4) , pl[j,c(2,4)] , lwd=2 , col=rangi2 )
+}
+
+yoff <- 0.01
+text( 1 , pl[1,1]-yoff , "R/N" , pos=1 , cex=0.8 )
+text( 2 , pl[1,2]+yoff , "L/N" , pos=3 , cex=0.8 )
+text( 3 , pl[1,3]-yoff , "R/P" , pos=1 , cex=0.8 )
+text( 4 , pl[1,4]+yoff , "L/P" , pos=3 , cex=0.8 )
+mtext( "observed proportions\n" )
+```
+
+Apparently, individual #2 always pulls left. Individuals #2,3,4,5,6 shows decreases in proportion of left pulls when a partner is present
+
+```{r}
+post.1.3 <- extract.samples(m.1.3)
+ppost <- matrix(0,nrow=nrow(post.1.3$a),ncol=28)
+dat <- list(actor=rep(1:7, each=4), treatment=rep(1:4, times=7))
+for(i in 1:28){ppost[,i] = inv_logit(post.1.3$a[,dat$actor[i]] + post.1.3$b[,dat$treatment[i]])}
+# p_post <- link(m1.3, data=dat)
+p_mu <- apply(ppost, 2, mean)
+p_pi <- apply(ppost, 2,PI, prob=0.89)
+```
+
+
+```{r}
+plot(NULL, xlim=c(1,28),  ylim=c(0,1),xlab="",
+     ylab="proportion left lever",  xaxt="n", yaxt="n")
+axis(side=2,at=c(0,0.5,1), labels=c(0,0.5,1))
+abline(h=0.5, lty=2)
+
+for(i in 1:7){abline(v=(i-1)*4+4.5, lwd=0.5)}
+for(i in 1:7){text(x=(i-1)*4+2.5,y=1.1,concat("actor ",i), xpd=TRUE)}
+
+# points(x=1:28,y=t(pl),pch=16, col="white",cex=1.7)
+points(x=1:28,y=p_mu,pch=c(1,1,16,16), col=rangi2, lwd=2)
+for(j in (1:7)[-2]){
+  lines( (j-1)*4+c(1,3) , p_mu[(j-1)*4+c(1,3)] , lwd=2 , col=rangi2 )
+  lines( (j-1)*4+c(2,4) , p_mu[(j-1)*4+c(2,4)] , lwd=2 , col=rangi2 )
+}
+
+for(j in (1:28)){
+  lines(x=rep(j,2), p_pi[,j] , lwd=2 , col=rangi2 )
+}
+
+yoff <- 0.08
+text( 1 , p_mu[1]-yoff , "R/N" , pos=1 , cex=0.8 )
+text( 2 , p_mu[2]+yoff , "L/N" , pos=3 , cex=0.8 )
+text( 3 , p_mu[3]-yoff , "R/P" , pos=1 , cex=0.8 )
+text( 4 , p_mu[4]+yoff , "L/P" , pos=3 , cex=0.8 )
+mtext( "posterior proportions\n" )
+```
+
+When adding a partner, the model expects almost no change in decisions of focal chimpanzees
+
+##1.2 Models without interaction effects
+
+$$
+L_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \alpha_{ACTOR[i]} + \beta_{SIDE[i]} + \beta_{COND[i]}\\
+\alpha_{ACTOR[i]} \sim Normal(0,1.5)\\
+\beta_{SIDE[i]} \sim Normal(0,0.5)\\
+\beta_{COND[i]} \sim Normal(0,0.5)
+$$
+
+```{r}
+d$side <- d$prosoc_left + 1
+d$cond <- d$condition + 1
+```
+
+
+```{r}
+# dlist <- list(
+#   pulled_left = d$pulled_left,
+#   actor = d$actor,
+#   treatment = as.integer(d$treatment),
+#   N = nrow(d),
+#   N_actor = length(unique(d$actor)),
+#   N_treatment = length(unique(d$treatment))
+# )
+```
+
+
+```{r}
+dlist.2 <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  side = d$side,
+  cond = d$cond,
+  N = nrow(d),
+  N_actor = length(unique(d$actor)),
+  N_side = length(unique(d$side)),
+  N_cond = length(unique(d$cond))
+)
+```
+
+
+```{r}
+code_m1.4 <- "
+data{
+  int N;
+  int N_actor;
+  int N_side;
+  int N_cond;
+  int pulled_left[N];
+  int side[N];
+  int cond[N];
+  int actor[N];
+}
+parameters{
+  vector[N_side] bs;
+  vector[N_cond] bc;
+  vector[N_actor] a;
+}
+model{
+  vector[N] p;
+  a ~ normal(0,1.5);
+  bs ~ normal(0,0.5);
+  bc ~ normal(0,0.5);
+  for(i in 1:N){
+    p[i] = a[actor[i]] + bs[side[i]] + bc[cond[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  pulled_left ~ binomial(1, p);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] p;
+  for(i in 1:N){
+    p[i] = a[actor[i]] + bs[side[i]] + bc[cond[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1, p[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.4 <- stan(model_code=code_m1.4, data=dlist.2, chains=4, cores=4)
+precis(m.1.4,2,pars=c("a","bs","bc"))
+```
+
+We should be careful of the orders of side and cond when constructing the chart. These orders generate the treatments we have before
+
+```{r}
+post.1.4 <- extract.samples(m.1.4)
+ppost <- matrix(0,nrow=length(post.1.4$a),ncol=dlist.2$N_actor*dlist.2$N_side*dlist.2$N_cond)
+dat <- list(actor=rep(1:7, each=4),side=rep(1:2, times=14), cond=rep(c(1,1,2,2), times=7))
+for(i in 1:28){ppost[,i] = inv_logit(post.1.4$a[,dat$actor[i]] + post.1.4$bs[,dat$side[i]] + post.1.4$bc[,dat$cond[i]])}
+
+# p_post <- link(m1.4, data=dat)
+p_mu <- apply(ppost, 2, mean)
+p_pi <- apply(ppost, 2,PI, prob=0.89)
+```
+
+
+```{r}
+plot(NULL, xlim=c(1,28),  ylim=c(0,1),xlab="",
+     ylab="proportion left lever",  xaxt="n", yaxt="n")
+axis(side=2,at=c(0,0.5,1), labels=c(0,0.5,1))
+abline(h=0.5, lty=2)
+
+for(i in 1:7){abline(v=(i-1)*4+4.5, lwd=0.5)}
+for(i in 1:7){text(x=(i-1)*4+2.5,y=1.1,concat("actor ",i), xpd=TRUE)}
+
+# points(x=1:28,y=t(pl),pch=16, col="white",cex=1.7)
+points(x=1:28,y=p_mu,pch=c(1,1,16,16), col=rangi2, lwd=2)
+for(j in (1:7)[-2]){
+  lines( (j-1)*4+c(1,3) , p_mu[(j-1)*4+c(1,3)] , lwd=2 , col=rangi2 )
+  lines( (j-1)*4+c(2,4) , p_mu[(j-1)*4+c(2,4)] , lwd=2 , col=rangi2 )
+}
+
+for(j in (1:28)){
+  lines(x=rep(j,2), p_pi[,j] , lwd=2 , col=rangi2 )
+}
+
+yoff <- 0.08
+text( 1 , p_mu[1]-yoff , "R/N" , pos=1 , cex=0.8 )
+text( 2 , p_mu[2]+yoff , "L/N" , pos=3 , cex=0.8 )
+text( 3 , p_mu[3]-yoff , "R/P" , pos=1 , cex=0.8 )
+text( 4 , p_mu[4]+yoff , "L/P" , pos=3 , cex=0.8 )
+mtext( "posterior proportions\n" )
+```
+
+### Model comparison
+
+```{r}
+compare(m.1.3, m.1.4, func=PSIS)
+```
+
+The model without interaction is better in expected predictive accuracy. However, the difference is mild as both models tell us the same story that individuals are expected to do no differences with(out) the presence of partners
+
+## 1.3 Models with aggregated data
+### Aggregated data
+
+```{r}
+d.aggregated <- aggregate(
+  d$pulled_left, list(treatment=d$treatment, actor=d$actor,
+                      side=d$side, cond=d$cond), FUN=sum
+)
+colnames(d.aggregated)[5] <- "left_pulls"
+head(d.aggregated)
+```
+
+```{r}
+dlist.3 <- with(d.aggregated, list(
+  left_pulls = left_pulls,
+  treatment = treatment,
+  actor = actor,
+  side = side,
+  cond = cond,
+  N = 28,
+  N_treatment = length(unique(treatment)),
+  N_actor = length(unique(actor))
+))
+```
+
+
+```{r}
+code_m1.5 <- "
+data{
+  int N;
+  int N_actor;
+  int N_treatment;
+  int left_pulls[N];
+  int treatment[N];
+  int actor[N];
+}
+parameters{
+  vector[N_treatment] b;
+  vector[N_actor] a;
+}
+model{
+  vector[N] p;
+  a ~ normal(0,1.5);
+  b ~ normal(0,0.5);
+  for(i in 1:N){
+    p[i] = a[actor[i]] + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  left_pulls ~ binomial(N, p);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] p;
+  for(i in 1:N){
+    p[i] = a[actor[i]] + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(left_pulls[i] | N, p[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.1.5 <- stan(model_code=code_m1.5, data=dlist.3, chains=4, cores=4)
+precis(m.1.5,2,pars=c("a","b"))
+```
+
+### Posterior predictive check
+
+```{r}
+post.1.5 <- extract.samples(m.1.5)
+ppost <- matrix(0,nrow=nrow(post.1.5$a),ncol=28)
+dat <- list(actor=rep(1:7, each=4), treatment=rep(1:4, times=7))
+for(i in 1:28){ppost[,i] = inv_logit(post.1.5$a[,dat$actor[i]] + post.1.5$b[,dat$treatment[i]])}
+
+# p.post <- link(m.1.5, data=dat)
+p_mu <- apply(ppost, 2, mean)
+p_pi <- apply(ppost, 2,PI, prob=0.89)
+```
+
+
+```{r}
+plot(NULL, xlim=c(1,28),  ylim=c(0,1),xlab="",
+     ylab="proportion left lever",  xaxt="n", yaxt="n")
+axis(side=2,at=c(0,0.5,1), labels=c(0,0.5,1))
+abline(h=0.5, lty=2)
+
+for(i in 1:7){abline(v=(i-1)*4+4.5, lwd=0.5)}
+for(i in 1:7){text(x=(i-1)*4+2.5,y=1.1,concat("actor ",i), xpd=TRUE)}
+
+# points(x=1:28,y=t(pl),pch=16, col="white",cex=1.7)
+points(x=1:28,y=p_mu,pch=c(1,1,16,16), col=rangi2, lwd=2)
+for(j in (1:7)[-2]){
+  lines( (j-1)*4+c(1,3) , p_mu[(j-1)*4+c(1,3)] , lwd=2 , col=rangi2 )
+  lines( (j-1)*4+c(2,4) , p_mu[(j-1)*4+c(2,4)] , lwd=2 , col=rangi2 )
+}
+
+for(j in (1:28)){
+  lines(x=rep(j,2), p_pi[,j] , lwd=2 , col=rangi2 )
+}
+
+yoff <- 0.08
+text( 1 , p_mu[1]-yoff , "R/N" , pos=1 , cex=0.8 )
+text( 2 , p_mu[2]+yoff , "L/N" , pos=3 , cex=0.8 )
+text( 3 , p_mu[3]-yoff , "R/P" , pos=1 , cex=0.8 )
+text( 4 , p_mu[4]+yoff , "L/P" , pos=3 , cex=0.8 )
+mtext( "posterior proportions\n" )
+```
+The posterior prediction is closely similar to the previous two models
+
+### Model comparison
+
+```{r}
+compare(m.1.3, m.1.4, m.1.5, func=PSIS)
+```
+
+There are two points about the mode m.1.5:
+* It has a higher expected predictive accuracy than the other two models
+* It records warnings about Pareto k values that are not observed in the other models. However, the warnings was due to the structure of the data as aggregated data makes the aggregated probabilities larger
+
+# 2. Multilevel models
+## 2.1 Models with Centralization
+### Statistical models
+
+$$
+L_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \alpha_{ACTOR[i]} + \beta_{TREATMENT[i]}\\
+\beta_{TREATMENT[i]} \sim Normal(0,\sigma_{\beta})\\
+\alpha_{ACTOR[i]} \sim Normal(\bar \alpha, \sigma_{\alpha})\\
+\bar \alpha \sim Normal(0,1.5)\\
+\sigma_{\alpha} \sim Exponential(1)\\
+\sigma_{\beta} \sim Exponential(1)
+$$
+
+```{r}
+dlist.4 <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  block_id = d$block,
+  treatment = as.integer(d$treatment),
+  N = nrow(d),
+  N_actor = length(unique(d$actor)),
+  N_treatment = length(unique(d$treatment))
+)
+```
+
+
+```{r}
+code_m2.1 <- "
+data{
+  int N;
+  int N_actor;
+  int N_treatment;
+  int pulled_left[N];
+  int actor[N];
+  int treatment[N];
+}
+parameters{
+  real a_bar;
+  real sigma_a;
+  real sigma_b;
+  vector[N_actor] a;
+  vector[N_treatment] b;
+}
+model{
+  vector[N] p;
+  a_bar ~ normal(0,1.5);
+  sigma_a ~ exponential(1);
+  sigma_b ~ exponential(1);
+  a ~ normal(a_bar, sigma_a);
+  b ~ normal(0, sigma_b);
+  for(i in 1:N){
+    p[i] = a[actor[i]] + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  pulled_left ~ binomial(1, p);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] p;
+  for(i in 1:N){
+    p[i] = a[actor[i]] + b[treatment[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1, p[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.2.1 <- stan(model_code=code_m2.1, data=dlist.4, chains=4, cores=4)
+precis(m.2.1, 2, pars=c("a_bar", "sigma_a", "sigma_b"))
+```
+
+Before moving to the posterior predictive check, there are two things about the sampling process of the model. We're going to deal with them in the next section
+  The number of effective sample, n_eff, varies a lot across parameters. The common reason is that some parameters spend a lot of time near a boundary. Those are a sign of inefficient sampling
+  There is a warning about *Divergent Transitions*
+
+```{r}
+post.2.1 <- extract.samples(m.2.1, n=1e4)
+dens(post.2.1$sigma_a, col=rangi2, ylim=c(0,2), xlim=c(-0.1,4))
+text(x=2.5,y=0.7,"actor", col=rangi2)
+dens(post.2.1$sigma_b, add=TRUE)
+text(x=0.5,y=2,"block")
+```
+
+### Posterior predictive checks
+
+```{r}
+post.2.1 <- extract.samples(m.2.1)
+ppost <- matrix(0,nrow=nrow(post.2.1$a),ncol=28)
+dat <- list(actor=rep(1:7, each=4), treatment=rep(1:4, times=7))
+for(i in 1:28){ppost[,i] = inv_logit(post.2.1$a[,dat$actor[i]] + post.2.1$b[,dat$treatment[i]])}
+
+# dat <- list(actor=rep(1:7, each=4), treatment=rep(1:4, times=7))
+# p_post <- link(m2.1, data=dat)
+p_mu <- apply(ppost, 2, mean)
+p_pi <- apply(ppost, 2,PI, prob=0.89)
+```
+
+
+```{r}
+plot(NULL, xlim=c(1,28),  ylim=c(0,1),xlab="",
+     ylab="proportion left lever",  xaxt="n", yaxt="n")
+axis(side=2,at=c(0,0.5,1), labels=c(0,0.5,1))
+abline(h=0.5, lty=2)
+
+for(i in 1:7){abline(v=(i-1)*4+4.5, lwd=0.5)}
+for(i in 1:7){text(x=(i-1)*4+2.5,y=1.1,concat("actor ",i), xpd=TRUE)}
+
+# points(x=1:28,y=t(pl),pch=16, col="white",cex=1.7)
+points(x=1:28,y=p_mu,pch=c(1,1,16,16), col=rangi2, lwd=2)
+for(j in (1:7)[-2]){
+  lines( (j-1)*4+c(1,3) , p_mu[(j-1)*4+c(1,3)] , lwd=2 , col=rangi2 )
+  lines( (j-1)*4+c(2,4) , p_mu[(j-1)*4+c(2,4)] , lwd=2 , col=rangi2 )
+}
+
+for(j in (1:28)){
+  lines(x=rep(j,2), p_pi[,j] , lwd=2 , col=rangi2 )
+}
+
+yoff <- 0.08
+text( 1 , p_mu[1]-yoff , "R/N" , pos=1 , cex=0.8 )
+text( 2 , p_mu[2]+yoff , "L/N" , pos=3 , cex=0.8 )
+text( 3 , p_mu[3]-yoff , "R/P" , pos=1 , cex=0.8 )
+text( 4 , p_mu[4]+yoff , "L/P" , pos=3 , cex=0.8 )
+mtext( "posterior proportions\n" )
+```
+
+The multilevel model re-confirms the previous conclusion about no differences in focal chimpanzees' choices with(out) partners
+
+### Models with more clusters
+
+$$
+L_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \alpha_{ACTOR[i]} + \gamma_{BLOCK[i]} + \beta_{TREATMENT[i]}\\
+\beta_{TREATMENT[i]} \sim Normal(0,0.5)\\
+\alpha_{ACTOR[i]} \sim Normal(\bar \alpha, \sigma_{\alpha})\\
+\gamma_{BLOCK[i]} \sim Normal(0,\sigma_{\gamma})\\
+\bar \alpha \sim Normal(0,1.5)\\
+\sigma_{\alpha} \sim Exponential(1)\\
+\sigma_{\gamma} \sim Exponential(1)
+$$
+
+```{r}
+dlist.5 <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  block_id = d$block,
+  treatment = as.integer(d$treatment),
+  N = nrow(d),
+  N_actor = length(unique(d$actor)),
+  N_treatment = length(unique(d$treatment)),
+  N_block = length(unique(d$block))
+)
+```
+
+
+```{r}
+code_m2.2 <- "
+data{
+  int N;
+  int N_actor;
+  int N_treatment;
+  int N_block;
+  int pulled_left[N];
+  int actor[N];
+  int treatment[N];
+  int block_id[N];
+}
+parameters{
+  real a_bar;
+  real sigma_a;
+  real sigma_g;
+  vector[N_actor] a;
+  vector[N_treatment] b;
+  vector[N_block] g;
+}
+model{
+  vector[N] p;
+  a_bar ~ normal(0,1.5);
+  sigma_a ~ exponential(1);
+  sigma_g ~ exponential(1);
+  a ~ normal(a_bar, sigma_a);
+  b ~ normal(0, 0.5);
+  g ~ normal(0, sigma_g);
+  for(i in 1:N){
+    p[i] = a[actor[i]] + b[treatment[i]] + g[block_id[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  pulled_left ~ binomial(1, p);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] p;
+  for(i in 1:N){
+    p[i] = a[actor[i]] + b[treatment[i]] + g[block_id[i]];
+    p[i] = inv_logit(p[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1, p[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.2.2 <- stan(model_code=code_m2.2, data=dlist.5, chains=4, cores=4)
+precis(m.2.2, 2, pars=c("a_bar", "sigma_a", "sigma_g", "a", "b", "g"))
+```
+
+```{r}
+plot(precis(m.2.2, 2, pars=c("a_bar", "sigma_a", "sigma_g", "a", "b", "g")))
+```
+
+##2.2 Models with Non-centralization
+
+As mentioned previously, the multilevel model, m2.1 and m2.2, observed warnings of divergent transitions. Intuitively, that implies of unreliable sampling process. Theoretically, there are two ways to reduce the impact of divergent transitions
+  Tune the simulation by doing more warmup with a higher target acceptance rate
+  Reparameterize the model
+
+We will go through the second way
+
+### Statistical models
+
+$$
+L_{i} \sim Binomial(1,p_{i})\\
+logit(p_{i}) = \bar \alpha + z_{ACTOR[i]}\sigma_{\alpha} + \chi_{BLOCK[i]}\sigma_{\gamma} + \beta_{TREATMENT[i]}\\
+\beta_{j} \sim Normal(0,0.5)\\
+z_{j} \sim Normal(0,1)\\
+x_{j} \sim Normal(0,1)\\
+\bar \alpha \sim Normal(0,1.5)\\
+\sigma_{\alpha} \sim Exponential(1)\\
+\sigma_{\gamma} \sim Exponential(1)
+$$
+
+```{r}
+dlist.5 <- list(
+  pulled_left = d$pulled_left,
+  actor = d$actor,
+  block_id = d$block,
+  treatment = as.integer(d$treatment),
+  N = nrow(d),
+  N_actor = length(unique(d$actor)),
+  N_treatment = length(unique(d$treatment)),
+  N_block = length(unique(d$block))
+)
+```
+
+
+```{r}
+code_m2.3 <- "
+data{
+  int N;
+  int N_actor;
+  int N_treatment;
+  int N_block;
+  int pulled_left[N];
+  int actor[N];
+  int treatment[N];
+  int block_id[N];
+}
+parameters{
+  real a_bar;
+  real<lower=0> sigma_a;
+  real<lower=0> sigma_g;
+  vector[N_actor] z;
+  vector[N_treatment] b;
+  vector[N_block] x;
+}
+model{
+  vector[N] p;
+  a_bar ~ normal(0,1.5);
+  sigma_a ~ exponential(1);
+  sigma_g ~ exponential(1);
+  z ~ normal(0, 1);
+  b ~ normal(0, 0.5);
+  x ~ normal(0, 1);
+  for(i in 1:N){
+    p[i] = a_bar + z[actor[i]]*sigma_a + b[treatment[i]] + x[block_id[i]]*sigma_g;
+    p[i] = inv_logit(p[i]);
+  }
+  pulled_left ~ binomial(1, p);
+}
+generated quantities{
+  vector[N] log_lik;
+  vector[N] p;
+  vector[N_actor] a;
+  vector[N_block] g;
+  
+  a = a_bar + z*sigma_a;
+  g = x*sigma_g;
+  
+  for(i in 1:N){
+    p[i] = a_bar + z[actor[i]]*sigma_a + b[treatment[i]] + x[block_id[i]]*sigma_g;
+    p[i] = inv_logit(p[i]);
+  }
+  for(i in 1:N){
+    log_lik[i] = binomial_lpmf(pulled_left[i] | 1, p[i]);
+  }
+}
+"
+```
+
+
+```{r}
+m.2.3 <- stan(model_code=code_m2.3, data=dlist.5, chains=4, cores=4)
+precis(m.2.3, 2, pars=c("a_bar", "sigma_a", "sigma_g", "a", "g"))
+```
+
+
+```{r}
+precis.2.2 <- precis(m.2.2, 2)
+precis.2.3 <- precis(m.2.3,2)
+pars <- c( paste("a[",1:7,"]",sep="") , paste("g[",1:6,"]",sep="") ,
+           paste("b[",1:4,"]",sep="") , "a_bar" , "sigma_a" , "sigma_g" )
+neff_table <- cbind(precis.2.2[pars,"n_eff"] , precis.2.3[pars,"n_eff"] )
+plot( neff_table , xlim=range(neff_table) , ylim=range(neff_table) ,
+    xlab="n_eff (centered)" , ylab="n_eff (non-centered)" , lwd=2 )
+abline( a=0 , b=1 , lty=2 )
+```
+
+# 3. Multilevel posterior predictions
+## Posterior prediction for same clusters
+
+We're going to compute the posterior predictions for actor number 2
+
+```{r}
+chimp <- 2
+d_pred <- list(
+  actor = rep(chimp,4),
+  treatment = 1:4,
+  block_id = rep(1,4)
+)
+```
+
+```{r}
+post <- extract.samples(m.2.3)
+p <- matrix(0, nrow=length(post$a_bar), ncol=4)
+for(i in 1:4){p[,i] = inv_logit(post$a_bar + post$sigma_a*post$z[,d_pred$actor[i]] + post$sigma_g*post$x[,d_pred$block_id[i]] + post$b[,d_pred$treatment[i]])}
+# p <- link(m2.3, data=d_pred)
+p_mu <- apply(p,2,mean)
+p_pi <- apply(p,2,PI,prob=0.89)
+```
+
+```{r}
+dim(post$z)
+```
+
+
+```{r}
+p_mu
+```
+
+```{r}
+p_pi
+```
+
+## Posterior prediction for new clusters
+
+We will construct posterior predictions for a new, previously unobserved average actor. Note that, we assume the average block effect is about zero
+
+```{r}
+p_link_abar <- function( treatment ) {
+    logodds <- with( post , a_bar + b[,treatment] )
+    return( inv_logit(logodds) )
+}
+```
+
+
+```{r}
+post <- extract.samples(m.2.2)
+p_raw <- sapply( 1:4 , function(i) p_link_abar( i ) )
+p_mu <- apply( p_raw , 2 , mean )
+p_ci <- apply( p_raw , 2 , PI )
+plot( NULL , xlab="treatment" , ylab="proportion pulled left" ,
+    ylim=c(0,1) , xaxt="n" , xlim=c(1,4) )
+axis( 1 , at=1:4 , labels=c("R/N","L/N","R/P","L/P") )
+lines( 1:4 , p_mu )
+shade( p_ci , 1:4 )
+```
+
+```{r}
+a_sim <- with( post , rnorm( length(post$a_bar) , a_bar , sigma_a ) )
+p_link_asim <- function( treatment ) {
+    logodds <- with( post , a_sim + b[,treatment] )
+    return( inv_logit(logodds) )
+}
+p_raw_asim <- sapply( 1:4 , function(i) p_link_asim( i ) )
+```
+
+
+```{r}
+plot( NULL , xlab="treatment" , ylab="proportion pulled left" ,
+    ylim=c(0,1) , xaxt="n" , xlim=c(1,4) )
+axis( 1 , at=1:4 , labels=c("R/N","L/N","R/P","L/P") )
+for ( i in 1:100 ) lines( 1:4 , p_raw_asim[i,] , col=grau(0.25) , lwd=2 )
+```
+
