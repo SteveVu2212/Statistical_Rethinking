@@ -15,4 +15,4 @@ The project includes two parts:
 
 # Disclaimer
 
-Here is the most important thing. The materials and resources being used in the projects belong to the textbook **Statistical Rethinking** by **Richard McElreath**. I credit the book to strongly inspire me to *rethink* my viewpoints of statistics.
+Here is the most important thing. The materials and resources being used in the project belong to the textbook **Statistical Rethinking** by **Richard McElreath**. I credit the book to strongly inspire me to *rethink* my viewpoints of statistics.
