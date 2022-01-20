@@ -823,7 +823,7 @@ The notification of high Pareto k values implies that the smoothing
 approximation is unreliable for some points. Let draw PSIS k values and
 WAIC penalty to find out that outlier
 
-#2. Outlier detection
+# 2. Outlier detection
 
 ``` r
 set.seed(3)
@@ -920,7 +920,7 @@ abline(v=0.5, lty=2)
 Now, the relative influence of the outlier has been reduced. We do not
 get any warnings about PSIS k values and WAIC penalty
 
-#3. Measurement error
+# 3. Measurement error
 
 The original data has a lot of variation in how uncertain the observed
 divorce rate is. In this part, we will deal with the measurement error
