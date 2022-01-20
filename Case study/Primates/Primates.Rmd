@@ -408,13 +408,17 @@ set.seed(5)
 post2.1 <- extract.samples(m.2.1)
 B_seq = seq(from=min(d2$logbrain), to=max(d2$logbrain), length.out=30)
 R_seq = seq(from=min(d2$logresearch), to=max(d2$logresearch), length.out=30)
-mu <- link(m2.1, data=list(B=B_seq, R=R_seq))
-mu.mean <- apply(mu$lambda,2,mean)
-mu.pi <- apply(mu$lambda,2,PI,prob=0.89)
+mu <- matrix(0,nrow=length(post2.1$al),ncol=30)
+for(i in 1:30){mu[,i] = exp(post2.1$al + post2.1$b21*B_seq[i] + post2.1$b22*R_seq[i])}
+# mu <- link(m2.1, data=list(B=B_seq, R=R_seq))
+mu.mean <- apply(mu,2,mean)
+mu.pi <- apply(mu,2,PI,prob=0.89)
 ```
 
 ```{r}
-sim.social <- sim(m1.2, data = list(B=B_seq, R=R_seq))
+sim.social <- matrix(0,nrow=length(post2.1$al),ncol=30)
+for(i in 1:30){sim.social[,i] = rpois(1e3, lambda=exp(post2.1$al + post2.1$b21*B_seq[i] + post2.1$b22*R_seq[i]))}
+# sim.social <- sim(m1.2, data = list(B=B_seq, R=R_seq))
 sim.pi <- apply(sim.social, 2, PI, prob=0.89)
 ```
 
@@ -431,10 +435,10 @@ shade(sim.pi, B_seq, col=col.alpha("gray",0.5))
 ## Model comparison
 
 ```{r}
-compare(m1.1, m1.2, m2.1)
+compare(m.1.1, m.1.2, m.2.1)
 ```
 ```{r}
-compare(m1.1, m1.2, m2.1, func = PSIS)
+compare(m.1.1, m.1.2, m.2.1, func = PSIS)
 ```
 
 Both WAIC and PSIS agree on the outperformance of m2.1 in term of expected predictive accuracy. Note that the slight different between m1.2 and m2.1 is particular to the case study
@@ -713,7 +717,7 @@ precis(m.3.3)
 
 
 ```{r}
-post <- extract.samples(m3.3)
+post <- extract.samples(m.3.3)
 plot(NULL, xlim=c(0,max(dat_list$Dmat)), ylim=c(0,1.5),
      xlab="phylogenetic distance", ylab="covariance")
 
